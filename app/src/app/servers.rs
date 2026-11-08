@@ -66,6 +66,8 @@ pub struct EditForm {
     pub ytm_channels: Vec<listen_ytmusic::channels::Channel>,
     /// Every signed-in browser profile found (for "Use … instead").
     pub ytm_browsers: Vec<listen_ytmusic::browser::Profile>,
+    /// Spotify: songs play from Spotify itself (a player sign-in is stored).
+    pub spotify_player: bool,
 }
 
 impl EditForm {
@@ -85,6 +87,7 @@ impl EditForm {
             ytm_profile: None,
             ytm_channels: Vec::new(),
             ytm_browsers: Vec::new(),
+            spotify_player: false,
         }
     }
 }
@@ -141,6 +144,9 @@ pub enum ServersMsg {
         Result<(listen_ytmusic::browser::Profile, Vec<listen_ytmusic::channels::Channel>), String>,
     ),
     EditYtmPick(usize),
+    /// Spotify: sign in to Spotify's audio servers (Premium) so songs play from Spotify itself.
+    SpotifyPlayback(ServerId),
+    SpotifyPlaybackDone(ServerId, Result<listen_spotify::auth::PlayerLogin, String>),
     // action-required page, settings
     Retry(ServerId),
     Reconnect(ServerId),
@@ -293,6 +299,12 @@ impl Listen {
                     return Task::none();
                 };
                 let mut form = EditForm::new(server, self.config.options_of(&id));
+                if server.kind == SourceKind::Spotify {
+                    form.spotify_player = self
+                        .secret_of(server)
+                        .and_then(|s| listen_spotify::auth::Secret::from_json(&s))
+                        .is_some_and(|s| s.player.is_some());
+                }
                 if let Some(dir) = self.config.music_dirs.get(&id.0) {
                     form.music_server = dir.server_prefix.clone();
                     form.music_local = dir.local.clone();
@@ -436,6 +448,50 @@ impl Listen {
                 self.close_modal();
                 self.toast_success(format!("Now using the channel {}.", channel.name));
                 return self.reconnect(form.id);
+            }
+            M::SpotifyPlayback(id) => {
+                self.edit_with(|f| {
+                    f.busy = true;
+                    f.error = None;
+                });
+                self.toast_info("Approve Spotify playback in your browser…".into());
+                return Task::perform(
+                    async { listen_spotify::player::sign_in(super::album_page::open_url).await },
+                    move |r| Message::Servers(M::SpotifyPlaybackDone(id.clone(), r)),
+                );
+            }
+            M::SpotifyPlaybackDone(_, Err(e)) if e == listen_spotify::auth::SUPERSEDED => {}
+            M::SpotifyPlaybackDone(id, Err(e)) => {
+                tracing::warn!("spotify playback sign-in: {e}");
+                if self.servers.edit.as_ref().is_some_and(|f| f.id == id) {
+                    self.edit_with(|f| {
+                        f.busy = false;
+                        f.error = Some(e);
+                    });
+                } else {
+                    self.toast_error(e);
+                }
+            }
+            M::SpotifyPlaybackDone(id, Ok(login)) => {
+                let Some(server) = self.config.servers.iter().find(|s| s.id == id).cloned() else {
+                    return Task::none();
+                };
+                let Some(mut secret) =
+                    self.secret_of(&server).and_then(|s| listen_spotify::auth::Secret::from_json(&s))
+                else {
+                    self.toast_error("The Spotify sign-in is missing; sign in again.".into());
+                    return Task::none();
+                };
+                secret.player = Some(login);
+                if let Some(secrets) = self.secrets.as_ref().filter(|_| !self.ephemeral) {
+                    secrets.set(&id, &secret.to_json());
+                }
+                if self.servers.edit.as_ref().is_some_and(|f| f.id == id) {
+                    self.servers.edit = None;
+                    self.close_modal();
+                }
+                self.toast_success("Songs now play from Spotify.".into());
+                return self.reconnect(id);
             }
             M::Retry(id) => {
                 self.servers.failure = None;

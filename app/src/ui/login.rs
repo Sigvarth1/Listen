@@ -241,8 +241,9 @@ pub fn view(state: &Listen) -> Element<'_, Message> {
                 .spacing(metrics::space_md())
                 .align_y(Alignment::Center),
             para(
-                "Your Spotify library, playlists, albums and artists, with search. Spotify lets only its own \
-                 apps play its audio, so Listen plays each song from YouTube Music (via yt-dlp)."
+                "Your Spotify library, playlists, albums and artists, with search. With Spotify Premium, songs \
+                 play from Spotify itself: after signing in, approve playback once more in the browser. \
+                 Otherwise they play from YouTube Music (via yt-dlp)."
             ),
             para(
                 "Spotify needs an app of your own: create one in the Spotify developer dashboard (choose Web \

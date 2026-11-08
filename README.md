@@ -191,9 +191,11 @@ radio and playback, but no library.
 
 Listen shows your Spotify library through the official Spotify Web API: Liked Songs, saved albums, followed artists,
 your playlists (create, rename, add, remove and reorder songs), search and a home page with your recently played and
-top songs. Spotify only lets its own apps play its audio, so **each song plays from its YouTube Music copy** (found by
-title, artist and length, and played through yt-dlp like YouTube Music songs). Install yt-dlp and Deno as for YouTube
-Music.
+top songs. With **Spotify Premium**, songs play from Spotify itself: Listen signs in to Spotify's audio servers the
+way [librespot](https://github.com/librespot-org/librespot) does and plays the original Ogg Vorbis stream (up to
+320 kbit/s) through mpv, so crossfades, DJ transitions and the visualizer work as usual. Without Premium, and for
+songs Spotify can't play, **songs play from their YouTube Music copy** (found by title, artist and length, and
+played through yt-dlp). Install yt-dlp and Deno as for YouTube Music.
 
 Spotify requires every app to have its own client ID:
 
@@ -201,6 +203,8 @@ Spotify requires every app to have its own client ID:
    Tick **Web API**, and add `http://127.0.0.1:8898/callback` as the **Redirect URI**.
 2. In Listen choose **Add server → Spotify**, paste the app's **Client ID** and click **Sign in with Spotify**.
    Your browser opens Spotify's consent page; after you agree, Listen finishes signing in by itself.
+3. A second consent page asks to allow playback (Spotify's own player sign-in). Approve it to play from Spotify;
+   it needs Premium. You can do this later from the server's **Edit** dialog → **Play from Spotify**.
 
 Apps in Spotify's development mode only work for the developer's account and the accounts added under **User
 Management** in the dashboard. Listen keeps only the client ID and Spotify's refresh token, in the system keyring.
@@ -362,8 +366,9 @@ Poppins (SIL Open Font License). Icons: [Lucide](https://lucide.dev), [Remix Ico
   your own risk; YouTube may restrict accounts it considers to be accessed by unofficial clients. A YouTube Music
   Premium subscription is recommended. Listen does not download YouTube Music songs for offline use.
 - **Spotify support** reads your library through the Spotify Web API under your own developer app and
-  [Spotify's Developer Terms](https://developer.spotify.com/terms). Listen does not play or download Spotify's audio;
-  songs play from YouTube Music, as described above.
+  [Spotify's Developer Terms](https://developer.spotify.com/terms). Playing Spotify's audio uses Spotify's own player
+  client like librespot, which is unofficial and may not be allowed by Spotify's terms; use it with your own Premium
+  account at your own risk. Listen does not save Spotify's audio to disk.
 - **No content is provided by Listen.** It plays what your own servers, files and accounts give you access to.
 - **AI DJ.** Requests go from your computer to Google under your own key and Google's
   [Gemini API terms](https://ai.google.dev/gemini-api/terms) (which require you to be 18 or older). Outside the EU,

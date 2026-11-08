@@ -38,11 +38,29 @@ pub fn cancel_sign_in() {
     }
 }
 
+/// Spotify's own desktop client id ("keymaster"), the one its audio servers accept a player sign-in
+/// from (as librespot does), and the redirect URI it is registered with.
+pub const PLAYER_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
+pub const PLAYER_PORT: u16 = 5588;
+pub const PLAYER_REDIRECT_URI: &str = "http://127.0.0.1:5588/login";
+pub const PLAYER_SCOPES: &str = "streaming user-read-private user-read-email user-read-playback-state";
+
+/// The reusable player login Spotify's audio servers hand out (librespot's stored credentials).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayerLogin {
+    pub username: String,
+    /// Base64 of the credentials blob.
+    pub auth_data: String,
+}
+
 /// What is kept in the keyring for a Spotify account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Secret {
     pub client_id: String,
     pub refresh_token: String,
+    /// Playback from Spotify itself (Premium); without it songs play from YouTube Music.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<PlayerLogin>,
 }
 
 impl Secret {
@@ -80,15 +98,43 @@ pub fn pkce() -> Pkce {
     Pkce { challenge: challenge_of(&verifier), verifier }
 }
 
-pub fn authorize_url(client_id: &str, challenge: &str, state: &str) -> String {
+/// Which client signs in where: the user's own app (library) or Spotify's player client (audio).
+#[derive(Debug, Clone, Copy)]
+pub struct Flow<'a> {
+    pub client_id: &'a str,
+    pub port: u16,
+    pub redirect_uri: &'a str,
+    pub scopes: &'a str,
+}
+
+impl<'a> Flow<'a> {
+    pub fn library(client_id: &'a str) -> Self {
+        Flow { client_id, port: REDIRECT_PORT, redirect_uri: REDIRECT_URI, scopes: SCOPES }
+    }
+
+    pub fn player() -> Self {
+        Flow {
+            client_id: PLAYER_CLIENT_ID,
+            port: PLAYER_PORT,
+            redirect_uri: PLAYER_REDIRECT_URI,
+            scopes: PLAYER_SCOPES,
+        }
+    }
+
+    fn path(&self) -> String {
+        url::Url::parse(self.redirect_uri).map(|u| u.path().to_string()).unwrap_or_default()
+    }
+}
+
+pub fn authorize_url(flow: &Flow, challenge: &str, state: &str) -> String {
     let mut url = url::Url::parse(AUTHORIZE_URL).expect("valid URL");
     url.query_pairs_mut()
-        .append_pair("client_id", client_id)
+        .append_pair("client_id", flow.client_id)
         .append_pair("response_type", "code")
-        .append_pair("redirect_uri", REDIRECT_URI)
+        .append_pair("redirect_uri", flow.redirect_uri)
         .append_pair("code_challenge_method", "S256")
         .append_pair("code_challenge", challenge)
-        .append_pair("scope", SCOPES)
+        .append_pair("scope", flow.scopes)
         .append_pair("state", state);
     url.into()
 }
@@ -138,7 +184,7 @@ async fn token_request(http: &reqwest::Client, form: &[(&str, &str)]) -> Result<
 
 pub async fn exchange(
     http: &reqwest::Client,
-    client_id: &str,
+    flow: &Flow<'_>,
     code: &str,
     verifier: &str,
 ) -> Result<Tokens, SourceError> {
@@ -147,8 +193,8 @@ pub async fn exchange(
         &[
             ("grant_type", "authorization_code"),
             ("code", code),
-            ("redirect_uri", REDIRECT_URI),
-            ("client_id", client_id),
+            ("redirect_uri", flow.redirect_uri),
+            ("client_id", flow.client_id),
             ("code_verifier", verifier),
         ],
     )
@@ -180,11 +226,11 @@ pub enum Callback {
     Other,
 }
 
-/// Reads the request line (`GET /callback?code=…&state=… HTTP/1.1`).
-pub fn parse_callback(request_line: &str) -> Callback {
+/// Reads the request line (`GET /callback?code=…&state=… HTTP/1.1`) for the redirect `path`.
+pub fn parse_callback(request_line: &str, path: &str) -> Callback {
     let Some(target) = request_line.split_whitespace().nth(1) else { return Callback::Other };
     let Ok(url) = url::Url::parse(&format!("http://127.0.0.1{target}")) else { return Callback::Other };
-    if url.path() != "/callback" {
+    if url.path() != path {
         return Callback::Other;
     }
     let get = |key: &str| url.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned());
@@ -226,18 +272,28 @@ async fn read_request(stream: &mut tokio::net::TcpStream) -> std::io::Result<Str
     Ok(String::from_utf8_lossy(&buf).lines().next().unwrap_or_default().to_string())
 }
 
-/// Signs in: opens Spotify's consent page with `open` and waits for the browser to come back.
+/// Signs in to the library: opens Spotify's consent page with `open` and waits for the browser to
+/// come back.
 pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret, String> {
     let client_id = client_id.trim();
     if client_id.is_empty() {
         return Err("Enter the client ID of your Spotify app.".into());
     }
+    let tokens = authorize(&Flow::library(client_id), open).await?;
+    let refresh_token = tokens.refresh_token.ok_or("Spotify sent no refresh token.")?;
+    Ok(Secret { client_id: client_id.to_string(), refresh_token, player: None })
+}
+
+/// The browser half of a sign-in: consent page, code, tokens.
+pub async fn authorize(flow: &Flow<'_>, open: impl FnOnce(&str)) -> Result<Tokens, String> {
+    let port = flow.port;
+    let path = flow.path();
     // A sign-in still waiting (its browser tab never came back) gives the port up for this one.
     cancel_sign_in();
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     let mut tries = 0;
     let listener = loop {
-        match tokio::net::TcpListener::bind(("127.0.0.1", REDIRECT_PORT)).await {
+        match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => break l,
             Err(_) if tries < 30 => {
                 tries += 1;
@@ -245,7 +301,7 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
             }
             Err(e) => {
                 return Err(format!(
-                    "Could not listen on port {REDIRECT_PORT} for Spotify's answer ({e}); another program uses it."
+                    "Could not listen on port {port} for Spotify's answer ({e}); another program uses it."
                 ));
             }
         }
@@ -253,13 +309,13 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
     *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel_tx);
     let pkce = pkce();
     let state = random_string(24);
-    open(&authorize_url(client_id, &pkce.challenge, &state));
+    open(&authorize_url(flow, &pkce.challenge, &state));
 
     let wait = async {
         loop {
             let (mut stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
             let line = read_request(&mut stream).await.unwrap_or_default();
-            let (reply, result) = match parse_callback(&line) {
+            let (reply, result) = match parse_callback(&line, &path) {
                 Callback::Other => {
                     let _ = stream
                         .write_all(
@@ -293,9 +349,11 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
     };
     let code = tokio::select! {
         r = tokio::time::timeout(SIGN_IN_TIMEOUT, wait) => r.map_err(|_| {
-            "Spotify did not send the browser back within 5 minutes. If Spotify showed an error page, check \
-             that the redirect URI in your Spotify app is exactly http://127.0.0.1:8898/callback."
-                .to_string()
+            format!(
+                "Spotify did not send the browser back within 5 minutes. If Spotify showed an error page, \
+                 check that the redirect URI in your Spotify app is exactly {}.",
+                flow.redirect_uri
+            )
         })?,
         _ = cancel_rx => Err(SUPERSEDED.to_string()),
     };
@@ -303,9 +361,7 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
     let code = code?;
 
     let http = reqwest::Client::new();
-    let tokens = exchange(&http, client_id, &code, &pkce.verifier).await.map_err(|e| e.to_string())?;
-    let refresh_token = tokens.refresh_token.ok_or("Spotify sent no refresh token.")?;
-    Ok(Secret { client_id: client_id.to_string(), refresh_token })
+    exchange(&http, flow, &code, &pkce.verifier).await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -326,7 +382,7 @@ mod tests {
 
     #[test]
     fn authorize_url_carries_the_pkce_parameters() {
-        let url = url::Url::parse(&authorize_url("abc", "chal", "st")).unwrap();
+        let url = url::Url::parse(&authorize_url(&Flow::library("abc"), "chal", "st")).unwrap();
         let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
         assert_eq!(q["client_id"], "abc");
         assert_eq!(q["redirect_uri"], REDIRECT_URI);
@@ -339,20 +395,20 @@ mod tests {
     #[test]
     fn reads_the_callback() {
         assert_eq!(
-            parse_callback("GET /callback?code=AQB%2Fx&state=s1 HTTP/1.1"),
+            parse_callback("GET /callback?code=AQB%2Fx&state=s1 HTTP/1.1", "/callback"),
             Callback::Code { code: "AQB/x".into(), state: "s1".into() }
         );
         assert_eq!(
-            parse_callback("GET /callback?error=access_denied&state=s1 HTTP/1.1"),
+            parse_callback("GET /callback?error=access_denied&state=s1 HTTP/1.1", "/callback"),
             Callback::Denied("access_denied".into())
         );
-        assert_eq!(parse_callback("GET /favicon.ico HTTP/1.1"), Callback::Other);
-        assert_eq!(parse_callback(""), Callback::Other);
+        assert_eq!(parse_callback("GET /favicon.ico HTTP/1.1", "/callback"), Callback::Other);
+        assert_eq!(parse_callback("", "/callback"), Callback::Other);
     }
 
     #[test]
     fn secret_round_trips() {
-        let s = Secret { client_id: "c".into(), refresh_token: "r".into() };
+        let s = Secret { client_id: "c".into(), refresh_token: "r".into(), player: None };
         assert_eq!(Secret::from_json(&s.to_json()), Some(s));
         assert_eq!(Secret::from_json("not json"), None);
         assert_eq!(Secret::from_json(r#"{"client_id":"","refresh_token":"r"}"#), None);

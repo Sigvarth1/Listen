@@ -1,11 +1,12 @@
 //! Spotify backend: the user's library, playlists, search, albums and artists through the Spotify
-//! Web API ([`auth`] signs in with PKCE). Spotify's audio is DRM-protected and can't be handed to
-//! mpv, so a song plays from its YouTube Music copy ([`matching`]), through the same yt-dlp path as
-//! the YouTube Music source.
+//! Web API ([`auth`] signs in with PKCE). With Spotify Premium and a player sign-in, songs play from
+//! Spotify itself ([`player`], as librespot does); otherwise, or when Spotify can't play a song, from
+//! its YouTube Music copy ([`matching`]) through the same yt-dlp path as the YouTube Music source.
 
 pub mod auth;
 mod convert;
 pub mod matching;
+pub mod player;
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -94,6 +95,19 @@ pub struct Spotify {
     /// Spotify track id → its YouTube Music copy.
     matches: std::sync::Mutex<HashMap<String, Song>>,
     quality: std::sync::atomic::AtomicU8,
+    /// Playback from Spotify itself (Premium and a player sign-in).
+    player: Option<Arc<player::Player>>,
+    /// Songs Spotify failed to play: they play from YouTube Music from then on.
+    youtube_only: std::sync::Mutex<HashSet<String>>,
+    /// What is stored (kept current when Spotify replaces a token or the player login).
+    stored: Arc<std::sync::Mutex<auth::Secret>>,
+}
+
+/// Writes the account's sign-in to the keyring (through [`set_secret_saver`]).
+fn persist(server_id: &ServerId, secret: &auth::Secret) {
+    if let Some(save) = SAVER.get() {
+        save(server_id, &secret.to_json());
+    }
 }
 
 fn net(e: reqwest::Error) -> SourceError {
@@ -125,6 +139,16 @@ impl Spotify {
         let http = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(net)?;
         let tokens = auth::refresh(&http, &secret.client_id, &secret.refresh_token).await?;
         let refresh = tokens.refresh_token.clone().unwrap_or(secret.refresh_token.clone());
+        let stored = Arc::new(std::sync::Mutex::new(secret.clone()));
+        let player = secret.player.clone().map(|login| {
+            let (stored, id) = (stored.clone(), server_id.clone());
+            let on_new_login: Box<dyn Fn(auth::PlayerLogin) + Send + Sync> = Box::new(move |login| {
+                let mut s = stored.lock().unwrap_or_else(|e| e.into_inner());
+                s.player = Some(login);
+                persist(&id, &s);
+            });
+            player::Player::new(login, Some(on_new_login))
+        });
         let s = Self {
             server_id,
             client_id: secret.client_id.clone(),
@@ -142,6 +166,9 @@ impl Spotify {
             yt: tokio::sync::OnceCell::new(),
             matches: std::sync::Mutex::default(),
             quality: std::sync::atomic::AtomicU8::new(0),
+            player,
+            youtube_only: std::sync::Mutex::default(),
+            stored,
         };
         if refresh != secret.refresh_token {
             s.save_refresh_token(&refresh);
@@ -157,7 +184,14 @@ impl Spotify {
     /// The sign-in to store now (with the latest refresh token).
     pub async fn secret(&self) -> String {
         let refresh_token = self.token.lock().await.refresh.clone();
-        auth::Secret { client_id: self.client_id.clone(), refresh_token }.to_json()
+        let mut s = self.stored.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        s.refresh_token = refresh_token;
+        s.to_json()
+    }
+
+    /// Songs play from Spotify itself (a player sign-in is stored).
+    pub fn plays_from_spotify(&self) -> bool {
+        self.player.is_some()
     }
 
     fn me_id(&self) -> String {
@@ -165,10 +199,9 @@ impl Spotify {
     }
 
     fn save_refresh_token(&self, refresh: &str) {
-        let secret = auth::Secret { client_id: self.client_id.clone(), refresh_token: refresh.to_string() };
-        if let Some(save) = SAVER.get() {
-            save(&self.server_id, &secret.to_json());
-        }
+        let mut s = self.stored.lock().unwrap_or_else(|e| e.into_inner());
+        s.refresh_token = refresh.to_string();
+        persist(&self.server_id, &s);
     }
 
     async fn access_token(&self, force: bool) -> Result<String> {
@@ -880,11 +913,33 @@ impl MusicSource for Spotify {
     }
 
     async fn stream(&self, song: &Song) -> Result<StreamSource> {
+        let youtube_only = self.youtube_only.lock().unwrap_or_else(|e| e.into_inner()).contains(&song.id);
+        if let Some(player) = self.player.as_ref().filter(|_| !youtube_only) {
+            let quality = StreamQuality::from_u8(self.quality.load(std::sync::atomic::Ordering::Relaxed));
+            match player.url(&song.id, quality).await {
+                Ok(url) => return Ok(StreamSource::direct(url)),
+                Err(e) => {
+                    tracing::warn!(
+                        "spotify: “{}” from Spotify failed ({e}); using YouTube Music",
+                        song.title
+                    );
+                    self.youtube_only.lock().unwrap_or_else(|e| e.into_inner()).insert(song.id.clone());
+                }
+            }
+        }
         let m = self.youtube_match(song).await?;
         self.yt().await?.stream(&m).await
     }
 
     fn forget_stream(&self, song: &Song) {
+        // Spotify's file failed in mpv: the retry plays the YouTube Music copy.
+        if let Some(player) = &self.player
+            && player.loudness(&song.id).is_some()
+        {
+            player.forget(&song.id);
+            self.youtube_only.lock().unwrap_or_else(|e| e.into_inner()).insert(song.id.clone());
+            return;
+        }
         let m = self.matches.lock().unwrap_or_else(|e| e.into_inner()).get(&song.id).cloned();
         if let (Some(m), Some(yt)) = (m, self.yt.get()) {
             yt.forget_stream(&m);

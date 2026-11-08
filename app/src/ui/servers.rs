@@ -300,9 +300,32 @@ pub fn edit_modal(state: &Listen) -> Option<ModalParts<'_>> {
         }
         SourceKind::Spotify => {
             body = body.push(small_text(
-                "Signed in to Spotify. To use another account, remove this one and sign in again.",
+                if form.spotify_player {
+                    "Songs play from Spotify itself (Spotify Premium). Songs Spotify can't play come from \
+                     YouTube Music. To use another account, remove this one and sign in again."
+                } else {
+                    "Songs play from YouTube Music. With Spotify Premium they can play from Spotify itself: \
+                     approve playback once in your browser."
+                },
                 t.muted,
             ));
+            body = body.push(
+                button(label_w(
+                    match (form.busy, form.spotify_player) {
+                        (true, _) => "Waiting for your browser…",
+                        (false, true) => "Sign in for Spotify playback again",
+                        (false, false) => "Play from Spotify (Premium)…",
+                    },
+                    metrics::font_md(),
+                    t.foreground,
+                    Weight::Semibold,
+                ))
+                .padding(Padding::from([8.0, 16.0]))
+                .style(style::default_button(t))
+                .on_press_maybe(
+                    (!form.busy).then_some(Message::Servers(S::SpotifyPlayback(form.id.clone()))),
+                ),
+            );
         }
         kind => {
             body = body

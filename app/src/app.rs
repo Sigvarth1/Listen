@@ -3715,11 +3715,21 @@ impl Listen {
                     }
                 }
                 let id = server.id.clone();
+                // A new Spotify account: sign in for playback from Spotify too (Premium).
+                let spotify_playback = server.kind == SourceKind::Spotify
+                    && listen_spotify::auth::Secret::from_json(&secret).is_some_and(|s| s.player.is_none());
                 self.commit_pending_options(&id);
                 self.config.servers.push(server);
                 self.save_config();
                 self.login = LoginForm::default();
-                return self.on_connected(id, handle.0);
+                let connected = self.on_connected(id.clone(), handle.0);
+                if spotify_playback {
+                    return Task::batch([
+                        connected,
+                        Task::done(Message::Servers(servers::ServersMsg::SpotifyPlayback(id))),
+                    ]);
+                }
+                return connected;
             }
             Message::LoggedIn(Err(e)) => {
                 self.login.busy = false;
