@@ -25,6 +25,18 @@ const AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
 pub(crate) const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 /// How long the browser has to come back.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// What a sign-in that was replaced or cancelled returns (not an error to show).
+pub const SUPERSEDED: &str = "Spotify sign-in replaced by a newer one.";
+
+/// The sign-in waiting for the browser, to stop when another starts or the user cancels.
+static PENDING: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>> = std::sync::Mutex::new(None);
+
+/// Stops a sign-in that is waiting for the browser (it returns [`SUPERSEDED`]).
+pub fn cancel_sign_in() {
+    if let Some(cancel) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let _ = cancel.send(());
+    }
+}
 
 /// What is kept in the keyring for a Spotify account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,11 +232,25 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
     if client_id.is_empty() {
         return Err("Enter the client ID of your Spotify app.".into());
     }
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", REDIRECT_PORT)).await.map_err(|e| {
-        format!(
-            "Could not listen on port {REDIRECT_PORT} for Spotify's answer ({e}); is another sign-in open?"
-        )
-    })?;
+    // A sign-in still waiting (its browser tab never came back) gives the port up for this one.
+    cancel_sign_in();
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let mut tries = 0;
+    let listener = loop {
+        match tokio::net::TcpListener::bind(("127.0.0.1", REDIRECT_PORT)).await {
+            Ok(l) => break l,
+            Err(_) if tries < 30 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Could not listen on port {REDIRECT_PORT} for Spotify's answer ({e}); another program uses it."
+                ));
+            }
+        }
+    };
+    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel_tx);
     let pkce = pkce();
     let state = random_string(24);
     open(&authorize_url(client_id, &pkce.challenge, &state));
@@ -265,9 +291,16 @@ pub async fn sign_in(client_id: &str, open: impl FnOnce(&str)) -> Result<Secret,
             return result;
         }
     };
-    let code = tokio::time::timeout(SIGN_IN_TIMEOUT, wait)
-        .await
-        .map_err(|_| "Spotify did not answer within 5 minutes; try again.".to_string())??;
+    let code = tokio::select! {
+        r = tokio::time::timeout(SIGN_IN_TIMEOUT, wait) => r.map_err(|_| {
+            "Spotify did not send the browser back within 5 minutes. If Spotify showed an error page, check \
+             that the redirect URI in your Spotify app is exactly http://127.0.0.1:8898/callback."
+                .to_string()
+        })?,
+        _ = cancel_rx => Err(SUPERSEDED.to_string()),
+    };
+    drop(listener);
+    let code = code?;
 
     let http = reqwest::Client::new();
     let tokens = exchange(&http, client_id, &code, &pkce.verifier).await.map_err(|e| e.to_string())?;
@@ -323,6 +356,23 @@ mod tests {
         assert_eq!(Secret::from_json(&s.to_json()), Some(s));
         assert_eq!(Secret::from_json("not json"), None);
         assert_eq!(Secret::from_json(r#"{"client_id":"","refresh_token":"r"}"#), None);
+    }
+
+    #[tokio::test]
+    async fn a_new_sign_in_replaces_one_still_waiting() {
+        let first = tokio::spawn(sign_in("client", |_| {}));
+        // Until the first one holds the port.
+        while PENDING.lock().unwrap().is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let second = tokio::spawn(sign_in("client", |_| {}));
+        assert_eq!(first.await.unwrap(), Err(SUPERSEDED.to_string()));
+        // The second one registers once it holds the port; cancel it then.
+        while !second.is_finished() {
+            cancel_sign_in();
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(second.await.unwrap(), Err(SUPERSEDED.to_string()));
     }
 
     #[tokio::test]

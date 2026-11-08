@@ -1853,7 +1853,11 @@ impl Listen {
                 let secret = spotify.secret().await;
                 Ok((server, secret, SourceHandle(Arc::new(spotify))))
             },
-            Message::LoggedIn,
+            |r: Result<(ServerConfig, String, SourceHandle), String>| match r {
+                // Replaced by a newer click or cancelled: that one owns the form now.
+                Err(e) if e == listen_spotify::auth::SUPERSEDED => Message::Noop,
+                r => Message::LoggedIn(r),
+            },
         )
     }
 
@@ -3814,6 +3818,7 @@ impl Listen {
                 return self.start_discovery();
             }
             Message::CancelAddServer => {
+                listen_spotify::auth::cancel_sign_in();
                 self.adding_server = false;
                 self.servers.quick_connect = None;
                 self.login = LoginForm::default();
