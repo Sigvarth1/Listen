@@ -15,6 +15,8 @@ pub fn global_shortcuts(state: &Listen) -> Element<'_, Message> {
     let t = state.tokens;
     let s = &state.config.settings;
     let linux = cfg!(target_os = "linux");
+    // Per-action "global" switches: the desktop portal on Linux, system hot keys on macOS.
+    let global = linux || cfg!(target_os = "macos");
     let dups = duplicates(&s.hotkeys);
 
     let mut rows: Vec<Element<'_, Message>> = vec![
@@ -26,12 +28,15 @@ pub fn global_shortcuts(state: &Listen) -> Element<'_, Message> {
         .color(t.muted)
         .into(),
     ];
-    if linux {
+    if global {
         rows.push(
-            crate::ui::t_text(
+            crate::ui::t_text(if linux {
                 "A checked \"global\" action works from any window through the desktop's shortcut portal \
-                 (KDE Plasma, GNOME) instead of only inside Listen. The desktop has the final say on the key.",
-            )
+                 (KDE Plasma, GNOME) instead of only inside Listen. The desktop has the final say on the key."
+            } else {
+                "A checked \"global\" action works while any app is in front, not only inside Listen. \
+                 The media keys always control Listen through Now Playing."
+            })
             .font(crate::appearance::current_font())
             .size(metrics::font_sm())
             .color(t.muted)
@@ -39,11 +44,15 @@ pub fn global_shortcuts(state: &Listen) -> Element<'_, Message> {
         );
         if let Some(e) = &state.global_error {
             rows.push(
-                crate::ui::t_text(format!("The desktop refused system-wide shortcuts: {e}"))
-                    .font(crate::appearance::current_font())
-                    .size(metrics::font_sm())
-                    .color(t.error)
-                    .into(),
+                crate::ui::t_text(if linux {
+                    format!("The desktop refused system-wide shortcuts: {e}")
+                } else {
+                    format!("These keys are taken by another app or macOS: {e}")
+                })
+                .font(crate::appearance::current_font())
+                .size(metrics::font_sm())
+                .color(t.error)
+                .into(),
             );
         }
     }
@@ -83,7 +92,7 @@ pub fn global_shortcuts(state: &Listen) -> Element<'_, Message> {
         ]
         .spacing(metrics::space_md())
         .align_y(Alignment::Center);
-        if linux {
+        if global {
             let global = s.hotkeys_global.contains(a.id);
             let mut cb = checkbox(global).size(18);
             if !hotkey.is_empty() {
@@ -150,7 +159,7 @@ pub fn global_shortcuts(state: &Listen) -> Element<'_, Message> {
     iced::widget::Column::with_children(out).spacing(metrics::space_xl()).into()
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn shortcut_label(id: &str) -> String {
     crate::global_shortcuts::MEDIA_KEYS
         .iter()
@@ -160,7 +169,7 @@ fn shortcut_label(id: &str) -> String {
         .unwrap_or_else(|| id.to_string())
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn shortcut_label(id: &str) -> String {
     id.to_string()
 }

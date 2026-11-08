@@ -71,7 +71,7 @@ tokio-tungstenite = "0.26"
 futures-util = "0.3"
 
 # Heart-rate tempo: Bluetooth LE heart-rate sensors (BlueZ over D-Bus on Linux, WinRT on Windows).
-[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+[target.'cfg(any(target_os = "linux", windows, target_os = "macos"))'.dependencies]
 btleplug = "0.13"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -91,3 +91,13 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 
 [build-dependencies]
 winresource = "0.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+souvlaki = "0.8.3"
+tray-icon = "0.26.1"
+dispatch2 = "0.3"
+global-hotkey = "0.7"
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSNotification", "NSString", "NSObject", "NSOperation"] }

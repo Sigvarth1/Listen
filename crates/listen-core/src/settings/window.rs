@@ -158,7 +158,8 @@ impl Default for WindowSettings {
             minimize_to_tray: false,
             exit_to_tray: false,
             start_minimized: false,
-            custom_title_bar: true,
+            // macOS cannot drag an undecorated iced window from a deferred task; use the native frame there.
+            custom_title_bar: !cfg!(target_os = "macos"),
             custom_bar_style: WindowBarStyle::Windows,
             title_bar_track_info: true,
             discord_rpc: false,
@@ -224,7 +225,9 @@ mod tests {
     #[test]
     fn bar_style_maps_to_the_flag() {
         let mut w = WindowSettings::default();
-        assert_eq!(w.bar_style(), WindowBarStyle::Windows);
+        let expected =
+            if cfg!(target_os = "macos") { WindowBarStyle::Native } else { WindowBarStyle::Windows };
+        assert_eq!(w.bar_style(), expected);
         w.set_bar_style(WindowBarStyle::Macos);
         assert!(w.custom_title_bar);
         assert_eq!(w.bar_style(), WindowBarStyle::Macos);

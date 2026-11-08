@@ -1,7 +1,8 @@
 //! Native file / folder pickers. Linux uses the desktop's file chooser portal
 //! (shown in front of Listen) and falls back to `kdialog` / `zenity`; Windows
 //! uses the Windows Forms dialogs through PowerShell. `None` if cancelled or no
-//! dialog is available (the path can still be typed or the file dropped).
+//! dialog is available (the path can still be typed or the file dropped). macOS uses the
+//! system's open panel through `osascript`.
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -87,7 +88,42 @@ async fn run(commands: Vec<Command>) -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(windows))]
+/// macOS: the system's open panel through AppleScript; prints the POSIX path (cancel = error).
+#[cfg(target_os = "macos")]
+fn commands(pick: &Pick<'_>, folder: bool) -> Vec<Command> {
+    let mut osa = Command::new("/usr/bin/osascript");
+    osa.args(["-e", &applescript(pick, folder)]);
+    vec![osa]
+}
+
+/// The AppleScript for the open panel. File types are the patterns' extensions (`*.json` → `json`);
+/// none (or `*`) allows any file.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn applescript(pick: &Pick<'_>, folder: bool) -> String {
+    use crate::notify::applescript_string as q;
+    let mut s = String::from("set p to POSIX path of (");
+    s += if folder { "choose folder" } else { "choose file" };
+    s += &format!(" with prompt {}", q(pick.title));
+    if !folder {
+        let types: Vec<String> = pick
+            .patterns
+            .iter()
+            .filter_map(|p| p.strip_prefix("*."))
+            .filter(|e| !e.is_empty() && *e != "*")
+            .map(q)
+            .collect();
+        if !types.is_empty() {
+            s += &format!(" of type {{{}}}", types.join(", "));
+        }
+    }
+    if let Some(dir) = pick.start.as_deref().filter(|p| p.is_dir()) {
+        s += &format!(" default location (POSIX file {})", q(&dir.display().to_string()));
+    }
+    s += ")\nreturn p";
+    s
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn commands(pick: &Pick<'_>, folder: bool) -> Vec<Command> {
     let start = pick.start.clone().unwrap_or_default();
     let mut kd = Command::new("kdialog");

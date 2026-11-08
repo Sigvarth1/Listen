@@ -43,6 +43,8 @@ fn playlist(id: &str, name: &str, owner: Option<&str>, source: SourceKind) -> Pl
 
 fn state() -> Listen {
     let (mut s, _) = Listen::boot(&Args { demo: true, theme: Some("tokyoNight".into()), ..Args::default() });
+    // Click positions include the 30 px custom window bar (off by default on macOS).
+    s.config.settings.window.custom_title_bar = true;
     let _ = s.update(Message::WindowResized(SIZE));
     s.library.playlists = vec![
         playlist("liked", "Liked Music", None, SourceKind::YouTubeMusic),

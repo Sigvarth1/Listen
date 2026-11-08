@@ -22,7 +22,9 @@ fn missing_library_is_reported_not_fatal() {
     let wrong = ffi::Api::load_from(&libc).err().expect("libc is not projectM");
     assert!(wrong.contains("projectm_"), "{wrong}");
     // The hint shown in the settings when it is missing.
-    if milkdrop::api().is_err() {
+    if !cfg!(target_os = "linux") {
+        assert_eq!(milkdrop::availability().unwrap_err(), "Milkdrop is only available on Linux for now");
+    } else if milkdrop::api().is_err() {
         assert_eq!(milkdrop::availability().unwrap_err(), "Milkdrop needs libprojectM 4");
         assert!(milkdrop::load_error().is_some());
     }
@@ -173,8 +175,8 @@ fn settings_show_the_hint_or_the_options() {
     let mut s = boot();
     let _ = s.update(Message::Navigate(listen::app::Route::Settings));
     assert!(view_has(&s, 6000.0, "Milkdrop"), "the section is there either way");
-    if milkdrop::availability().is_err() {
-        assert!(view_has(&s, 6000.0, "Milkdrop needs libprojectM 4"));
+    if let Err(why) = milkdrop::availability() {
+        assert!(view_has(&s, 6000.0, &why));
         assert!(!view_has(&s, 6000.0, "Cycle time"), "no options without the library");
     } else {
         scanned(&mut s);
@@ -214,6 +216,7 @@ fn settings_changes_are_clamped_and_saved_to_the_state() {
     set(&mut s, MilkdropSetting::ClearIgnored);
     assert!(s.config.settings.milkdrop.ignored.is_empty());
     assert_eq!(s.config.settings.milkdrop.current_preset.as_deref(), Some("a-red"), "remembered");
+    #[cfg(target_os = "linux")]
     #[cfg(target_os = "linux")]
     listen::milkdrop::engine::clear_requests(); // ignoring asked for the next preset
 }
@@ -266,6 +269,7 @@ fn next_button_and_search_pick_send_messages() {
         let _ = s.update(m);
     }
     assert_eq!(s.milk.preset.as_deref(), Some("sub/c-blue"));
+    #[cfg(target_os = "linux")]
     #[cfg(target_os = "linux")]
     listen::milkdrop::engine::clear_requests(); // the pick asked the render thread
 }

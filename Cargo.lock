@@ -1772,6 +1772,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2",
+ "libc",
  "objc2 0.6.4",
 ]
 
@@ -2632,6 +2634,23 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "global-hotkey"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9247516746aa8e53411a0db9b62b0e24efbcf6a76e0ba73e5a91b512ddabed7"
+dependencies = [
+ "crossbeam-channel",
+ "keyboard-types 0.7.0",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "once_cell",
+ "thiserror 2.0.21",
+ "windows-sys 0.59.0",
+ "x11rb",
+ "xkeysym",
+]
 
 [[package]]
 name = "glow"
@@ -3626,6 +3645,17 @@ dependencies = [
 
 [[package]]
 name = "keyboard-types"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b750dcadc39a09dbadd74e118f6dd6598df77fa01df0cfcdc52c28dece74528a"
+dependencies = [
+ "bitflags 2.13.2",
+ "serde",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fbe853b403ae61a04233030ae8a79d94975281ed9770a1f9e246732b534b28d"
@@ -3644,6 +3674,8 @@ dependencies = [
  "dbus-secret-service",
  "log",
  "secret-service",
+ "security-framework 2.11.1",
+ "security-framework 3.7.0",
  "windows-sys 0.60.2",
  "zbus 4.4.0",
  "zeroize",
@@ -4004,14 +4036,17 @@ dependencies = [
  "ashpd",
  "async-trait",
  "base64 0.22.1",
+ "block2 0.6.2",
  "btleplug",
  "chrono",
  "crc32fast",
  "directories",
  "discord-rich-presence",
+ "dispatch2",
  "flate2",
  "fontdb",
  "futures-util",
+ "global-hotkey",
  "glow",
  "iced",
  "iced_runtime",
@@ -4038,6 +4073,8 @@ dependencies = [
  "listen-visualizer",
  "listen-ytmusic",
  "mpris-server",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
  "rand 0.9.5",
  "regex",
  "reqwest 0.12.28",
@@ -4275,6 +4312,9 @@ name = "listen-visualizer"
 version = "0.41.4"
 dependencies = [
  "cpal",
+ "listen-core",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
  "rustfft",
  "serde_json",
  "tokio",
@@ -4604,7 +4644,7 @@ dependencies = [
  "crossbeam-channel",
  "dpi",
  "gtk",
- "keyboard-types",
+ "keyboard-types 0.8.3",
  "libc",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -6623,7 +6663,7 @@ dependencies = [
  "openssl-probe",
  "rustls-pki-types",
  "schannel",
- "security-framework",
+ "security-framework 3.7.0",
 ]
 
 [[package]]
@@ -6651,7 +6691,7 @@ dependencies = [
  "rustls-native-certs",
  "rustls-platform-verifier-android",
  "rustls-webpki",
- "security-framework",
+ "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
  "windows-sys 0.61.2",
@@ -6765,6 +6805,19 @@ dependencies = [
  "serde",
  "sha2",
  "zbus 4.4.0",
+]
+
+[[package]]
+name = "security-framework"
+version = "2.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
+dependencies = [
+ "bitflags 2.13.2",
+ "core-foundation 0.9.4",
+ "core-foundation-sys",
+ "libc",
+ "security-framework-sys",
 ]
 
 [[package]]

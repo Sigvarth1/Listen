@@ -58,7 +58,9 @@ impl Inhibitor {
     pub fn system() -> Self {
         #[cfg(target_os = "linux")]
         return Self::new(Box::new(portal::Portal));
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        return Self::new(Box::new(caffeinate::Caffeinate));
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         Self::disabled()
     }
 
@@ -88,6 +90,54 @@ struct Disabled;
 impl Backend for Disabled {
     fn acquire(&mut self, _: Level) -> Option<Box<dyn Send>> {
         None
+    }
+}
+
+/// macOS: `caffeinate` holds a power assertion while it runs; it watches Listen's process,
+/// so a crash can't leave the Mac awake.
+#[cfg(target_os = "macos")]
+mod caffeinate {
+    use super::{Backend, Level};
+
+    pub(super) struct Caffeinate;
+
+    /// Dropping it ends `caffeinate`, which releases the assertion.
+    struct Guard(std::process::Child);
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    /// `-i` keeps the system from idle sleep; `-d` also keeps the display on.
+    pub(super) fn flags(level: Level) -> Option<&'static str> {
+        match level {
+            Level::None => None,
+            Level::System => Some("-i"),
+            Level::Display => Some("-di"),
+        }
+    }
+
+    impl Backend for Caffeinate {
+        fn acquire(&mut self, level: Level) -> Option<Box<dyn Send>> {
+            let child = std::process::Command::new("/usr/bin/caffeinate")
+                .arg(flags(level)?)
+                .arg("-w")
+                .arg(std::process::id().to_string())
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            match child {
+                Ok(child) => Some(Box::new(Guard(child))),
+                Err(e) => {
+                    tracing::warn!("sleep inhibit unavailable: {e}");
+                    None
+                }
+            }
+        }
     }
 }
 

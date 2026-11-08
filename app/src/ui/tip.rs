@@ -54,8 +54,11 @@ fn key_text(key: &str) -> String {
     key.to_uppercase()
 }
 
+/// Names of `mod`, `alt` and `meta`: on macOS `mod` is Cmd and `meta` is Control.
+const MOD: &str = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+const ALT: &str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
 const META: &str = if cfg!(target_os = "macos") {
-    "Cmd"
+    "Ctrl"
 } else if cfg!(target_os = "windows") {
     "Win"
 } else {
@@ -67,7 +70,7 @@ const META: &str = if cfg!(target_os = "macos") {
 pub fn binding_text(binding: &str) -> Option<String> {
     let b = crate::hotkeys::parse(binding)?;
     let mut parts: Vec<String> = Vec::new();
-    for (on, name) in [(b.ctrl, "Ctrl"), (b.alt, "Alt"), (b.shift, "Shift"), (b.meta, META)] {
+    for (on, name) in [(b.ctrl, MOD), (b.alt, ALT), (b.shift, "Shift"), (b.meta, META)] {
         if on {
             parts.push(name.into());
         }
@@ -211,11 +214,11 @@ mod tests {
     #[test]
     fn formats_bindings() {
         assert_eq!(binding_text("space").as_deref(), Some("Space"));
-        assert_eq!(binding_text("mod+arrowright").as_deref(), Some("Ctrl+→"));
-        assert_eq!(binding_text("shift+alt+mod+k").as_deref(), Some("Ctrl+Alt+Shift+K"));
+        assert_eq!(binding_text("mod+arrowright").as_deref(), Some(&*format!("{MOD}+→")));
+        assert_eq!(binding_text("shift+alt+mod+k").as_deref(), Some(&*format!("{MOD}+{ALT}+Shift+K")));
         assert_eq!(binding_text("meta+f5").as_deref(), Some(&*format!("{META}+F5")));
         assert_eq!(binding_text("numpad3").as_deref(), Some("Num 3"));
-        assert_eq!(binding_text("mod+equal").as_deref(), Some("Ctrl+="));
+        assert_eq!(binding_text("mod+equal").as_deref(), Some(&*format!("{MOD}+=")));
         assert_eq!(binding_text(""), None);
     }
 }

@@ -289,6 +289,13 @@ cargo run --release -p listen -- --demo        # demo library, no server needed
 cargo test --workspace                           # tests (some need mpv)
 ```
 
+**macOS** (Apple Silicon or Intel, macOS 11+; the visualizer needs macOS 14.2+): install the helpers with
+Homebrew (`brew install mpv yt-dlp deno`), then build the app bundle with `packaging/macos/build-app.sh`
+(add `--install` to copy `Listen.app` to `/Applications`). On macOS Listen uses the native window frame, Now
+Playing and the media keys, a menu bar icon, the Keychain, ⌘ for `mod` shortcuts, system-wide shortcuts and Chrome /
+Brave / Edge / Arc / Vivaldi / Firefox sign-in for YouTube Music (macOS asks once before the Keychain password is
+read). Not available on macOS: CD ripping, Milkdrop presets, headphone EQ and the self-updater (rebuild from git).
+
 Windows builds are cross-compiled from Linux with MinGW (`rustup target add x86_64-pc-windows-gnu`, then
 `cargo build --release --target x86_64-pc-windows-gnu -p listen`). `packaging/windows/build-installer.sh` builds the
 installer and `packaging/build-rpm.sh` the RPM and tarball.

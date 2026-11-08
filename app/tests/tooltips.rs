@@ -98,12 +98,16 @@ fn hash_path(name: &str) -> std::path::PathBuf {
     dir.join(name)
 }
 
+/// How `mod` and `alt` read on this platform.
+const MOD: &str = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+const ALT: &str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
+
 #[test]
 fn binding_text_is_readable() {
     assert_eq!(binding_text("space").as_deref(), Some("Space"));
-    assert_eq!(binding_text("mod+arrowright").as_deref(), Some("Ctrl+→"));
-    assert_eq!(binding_text("shift+mod+alt+arrowup").as_deref(), Some("Ctrl+Alt+Shift+↑"));
-    assert_eq!(binding_text("mod+k").as_deref(), Some("Ctrl+K"));
+    assert_eq!(binding_text("mod+arrowright").as_deref(), Some(&*format!("{MOD}+→")));
+    assert_eq!(binding_text("shift+mod+alt+arrowup").as_deref(), Some(&*format!("{MOD}+{ALT}+Shift+↑")));
+    assert_eq!(binding_text("mod+k").as_deref(), Some(&*format!("{MOD}+K")));
     assert_eq!(binding_text("f11").as_deref(), Some("F11"));
 }
 
@@ -114,7 +118,7 @@ fn text_follows_the_bindings_live() {
     s.config.settings.hotkeys.remove("next");
     assert_eq!(tip_text(&s, "Next track", Some("next")), "Next track");
     s.config.settings.hotkeys.insert("next".into(), "mod+arrowright".into());
-    assert_eq!(tip_text(&s, "Next track", Some("next")), "Next track · Ctrl+→");
+    assert_eq!(tip_text(&s, "Next track", Some("next")), format!("Next track · {MOD}+→"));
     // Rebinding shows at once, a cleared binding drops the key again.
     s.config.settings.hotkeys.insert("next".into(), "shift+n".into());
     assert_eq!(tip_text(&s, "Next track", Some("next")), "Next track · Shift+N");
@@ -125,7 +129,7 @@ fn text_follows_the_bindings_live() {
     // Global bindings read the same.
     s.config.settings.hotkeys.insert("playPause".into(), "mod+alt+space".into());
     s.config.settings.hotkeys_global.insert("playPause".into());
-    assert_eq!(tip_text(&s, "Pause", Some("playPause")), "Pause · Ctrl+Alt+Space");
+    assert_eq!(tip_text(&s, "Pause", Some("playPause")), format!("Pause · {MOD}+{ALT}+Space"));
 }
 
 #[test]
@@ -133,7 +137,7 @@ fn hovering_next_opens_a_tooltip_that_follows_the_binding() {
     let mut s = state();
     s.config.settings.hotkeys.insert("next".into(), "mod+arrowright".into());
     let at = find_button(&s, |m| matches!(m, Message::NextClick));
-    assert_eq!(tip_text(&s, "Next track", Some("next")), "Next track · Ctrl+→");
+    assert_eq!(tip_text(&s, "Next track", Some("next")), format!("Next track · {MOD}+→"));
 
     let path = hash_path("next-ctrl-right");
     // Not hovered: no tooltip, so the picture differs from the hovered one.

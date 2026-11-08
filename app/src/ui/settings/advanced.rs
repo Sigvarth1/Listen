@@ -413,11 +413,15 @@ pub(super) fn updates(state: &Listen) -> Element<'_, Message> {
             })
             .into(),
         ),
-        if cfg!(windows) {
+        if crate::app::helpers::SUPPORTED {
             line(
                 state,
                 "Helper programs",
-                "mpv, yt-dlp and Deno, installed with winget. Update them when YouTube Music songs stop playing.",
+                if cfg!(target_os = "macos") {
+                    "mpv, yt-dlp and Deno, installed with Homebrew. Update them when YouTube Music songs stop playing."
+                } else {
+                    "mpv, yt-dlp and Deno, installed with winget. Update them when YouTube Music songs stop playing."
+                },
                 row![
                     small(state, "Show", Some(Message::Helpers(crate::app::helpers::HelpersMsg::Open))),
                     small(state, "Update", Some(Message::Helpers(crate::app::helpers::HelpersMsg::Update))),

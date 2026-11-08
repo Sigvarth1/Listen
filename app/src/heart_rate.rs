@@ -141,7 +141,7 @@ async fn fake(script: Vec<(u16, u32)>, out: &mut Sender<Message>) {
     }
 }
 
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 async fn bluetooth(preferred: Option<String>, out: &mut Sender<Message>) {
     loop {
         if out.send(send(HrEvent::Searching)).await.is_err() {
@@ -163,12 +163,12 @@ async fn bluetooth(preferred: Option<String>, out: &mut Sender<Message>) {
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
 async fn bluetooth(_preferred: Option<String>, out: &mut Sender<Message>) {
     let _ = out.send(send(HrEvent::NotFound("Bluetooth is not supported on this platform".into()))).await;
 }
 
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod ble {
     use super::*;
     use btleplug::api::bleuuid::uuid_from_u16;

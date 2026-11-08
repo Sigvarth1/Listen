@@ -353,6 +353,14 @@ pub enum InstallMode {
 
 /// How the program at `exe` is installed.
 pub fn classify_exe(exe: &Path, home: Option<&Path>) -> InstallMode {
+    if cfg!(target_os = "macos") {
+        // Releases carry Linux and Windows builds only; replacing the Mac binary with one would break it.
+        return InstallMode::Unsupported(
+            "No macOS builds are published; update with git and cargo, then rebuild the app \
+             (packaging/macos/build-app.sh)."
+                .into(),
+        );
+    }
     if cfg!(windows) {
         if exe.components().any(|c| c.as_os_str() == "target") {
             return InstallMode::Unsupported(
@@ -906,6 +914,9 @@ mod tests {
 
     #[test]
     fn windows_installer_asset_selection() {
+        if std::env::consts::ARCH != "x86_64" {
+            return; // releases are x86_64 only (e.g. an Apple Silicon Mac)
+        }
         let json = r#"[{"tag_name":"v0.30.0","draft":false,"prerelease":false,"body":"","assets":[
             {"name":"listen-0.30.0-1.fc44.x86_64.rpm","url":"https://api.github.com/a/1","size":1},
             {"name":"Listen-Setup-0.30.0.exe","url":"https://api.github.com/a/7","size":9},
@@ -957,6 +968,15 @@ mod tests {
     #[test]
     fn install_modes() {
         let home = Path::new("/home/alex");
+        if cfg!(target_os = "macos") {
+            for exe in ["/Applications/Listen.app/Contents/MacOS/listen", "/home/alex/.local/bin/listen"] {
+                assert!(matches!(
+                    classify_exe(Path::new(exe), Some(home)),
+                    InstallMode::Unsupported(m) if m.contains("macOS")
+                ));
+            }
+            return;
+        }
         if cfg!(windows) {
             assert!(
                 matches!(classify_exe(Path::new("C:/x/listen.exe"), None), InstallMode::Unsupported(m) if m.contains("installer"))

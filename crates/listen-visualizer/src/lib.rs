@@ -3,7 +3,8 @@
 //! * [`Analyzer`]: FFT → log-spaced dB bands with smoothing and falling peaks
 //!   (audioMotion-analyzer defaults: 20 Hz–22 kHz, −85…−25 dB, smoothing 0.6).
 //! * [`capture`]: Listen's own playback streams only (Linux: `pw-record` on mpv's node,
-//!   pre-volume), one recorder and watchdog per deck.
+//!   pre-volume), one recorder and watchdog per deck; macOS: a Core Audio process tap on mpv;
+//!   Windows: the default output's loopback.
 
 mod analyzer;
 pub use analyzer::*;
@@ -226,14 +227,34 @@ pub mod capture {
         }
     }
 
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     pub async fn pipewire(_target: &str, _tx: mpsc::Sender<Vec<f32>>) -> Result<(), String> {
         Err("audio capture is not implemented on this platform yet".into())
     }
 
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     pub async fn pipewire_many(_names: &[&str], _tx: mpsc::Sender<(usize, Vec<f32>)>) -> Result<(), String> {
         Err("audio capture is not implemented on this platform yet".into())
+    }
+
+    /// macOS: a Core Audio process tap on Listen's own mpv processes (all decks mixed, as deck 0).
+    #[cfg(target_os = "macos")]
+    pub async fn pipewire(_name: &str, tx: mpsc::Sender<Vec<f32>>) -> Result<(), String> {
+        let (wrapped, mut rx) = mpsc::channel::<(usize, Vec<f32>)>(64);
+        let forward = async move {
+            while let Some((_, samples)) = rx.recv().await {
+                if tx.send(samples).await.is_err() {
+                    break;
+                }
+            }
+        };
+        let (result, ()) = tokio::join!(crate::macos_tap::capture(wrapped), forward);
+        result
+    }
+
+    #[cfg(target_os = "macos")]
+    pub async fn pipewire_many(_names: &[&str], tx: mpsc::Sender<(usize, Vec<f32>)>) -> Result<(), String> {
+        crate::macos_tap::capture(tx).await
     }
 
     /// Windows: WASAPI loopback of the default *output* device (never the microphone).
@@ -344,8 +365,11 @@ pub mod capture {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod macos_tap;
+
 /// Interleaved device samples to 48 kHz interleaved stereo.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 mod convert {
     use super::SAMPLE_RATE;
 

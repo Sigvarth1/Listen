@@ -113,7 +113,7 @@ impl YtDlp {
         let mut cmd = Command::new(&self.binary);
         listen_core::platform::no_window(cmd.as_std_mut());
         let out = cmd.arg("--version").output().await.map_err(|e| {
-            if cfg!(windows) {
+            if cfg!(any(windows, target_os = "macos")) {
                 format!("yt-dlp not found ({e}). Settings → Advanced → Helper programs installs it.")
             } else {
                 format!("yt-dlp not found ({e}). Install it: sudo dnf install yt-dlp")
@@ -127,6 +127,8 @@ impl YtDlp {
                  ({})",
                 if cfg!(windows) {
                     "Settings → Advanced → Helper programs, or: winget install DenoLand.Deno"
+                } else if cfg!(target_os = "macos") {
+                    "Settings → Advanced → Helper programs, or: brew install deno"
                 } else {
                     "sudo dnf install nodejs"
                 }

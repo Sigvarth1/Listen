@@ -39,6 +39,11 @@ fn attach_parent_console() {
 }
 
 fn main() -> iced::Result {
+    // SAFETY: first thing in `main`, before any other thread.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        listen_core::platform::macos_extend_path()
+    };
     #[cfg(windows)]
     attach_parent_console();
     if std::env::args().nth(1).as_deref() == Some("--analysis-worker") {
@@ -189,6 +194,8 @@ fn main() -> iced::Result {
         }
     }
 
+    // Quitting from the macOS menu ends the process with `exit()`: take mpv along.
+    listen_core::platform::install_exit_cleanup();
     let mut app = iced::daemon(move || Listen::boot(&args), Listen::update, Listen::window_view)
         .title(Listen::window_title)
         .theme(Listen::window_theme)

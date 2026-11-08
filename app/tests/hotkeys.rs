@@ -173,7 +173,7 @@ fn recording_stores_the_pressed_combo() {
         },
     );
     assert_eq!(s.hotkey_recording.as_deref(), Some("nextAlbum"));
-    press(&mut s, key_event(Code::KeyJ, "j", Modifiers::CTRL | Modifiers::SHIFT));
+    press(&mut s, key_event(Code::KeyJ, "j", Modifiers::COMMAND | Modifiers::SHIFT));
     assert_eq!(s.hotkey_recording, None);
     assert_eq!(s.config.settings.hotkeys.get("nextAlbum").map(String::as_str), Some("mod+shift+j"));
 
@@ -225,11 +225,11 @@ fn clear_and_global_flag() {
 fn window_hotkey_runs_the_action_and_global_ones_do_not() {
     let mut s = server_state(SourceKind::Subsonic);
     s.config.settings.hotkeys.insert("rate4".into(), "mod+4".into());
-    press(&mut s, key_event(Code::Digit4, "4", Modifiers::CTRL));
+    press(&mut s, key_event(Code::Digit4, "4", Modifiers::COMMAND));
     assert_eq!(s.queue.current().unwrap().song.rating, Some(4));
     // Duplicated bindings fire every action bound to them.
     s.config.settings.hotkeys.insert("favoriteCurrentAdd".into(), "mod+4".into());
-    press(&mut s, key_event(Code::Digit4, "4", Modifiers::CTRL));
+    press(&mut s, key_event(Code::Digit4, "4", Modifiers::COMMAND));
     assert!(s.queue.current().unwrap().song.favorite);
 }
 

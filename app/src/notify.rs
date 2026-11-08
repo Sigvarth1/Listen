@@ -82,11 +82,44 @@ pub async fn send(c: &Content) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         Ok(())
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display notification {} with title \"Listen\" subtitle {}",
+            applescript_string(&c.body),
+            applescript_string(&c.title)
+        );
+        let out = tokio::process::Command::new("/usr/bin/osascript")
+            .args(["-e", &script])
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = c;
         Ok(())
     }
+}
+
+/// `text` as an AppleScript string literal.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn applescript_string(text: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' | '\r' => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]

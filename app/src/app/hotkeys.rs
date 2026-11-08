@@ -114,10 +114,13 @@ impl Listen {
 
     /// Actions whose hotkey the desktop portal handles instead of the window.
     pub(super) fn portal_active(&self) -> bool {
-        cfg!(target_os = "linux") && !self.demo && self.screenshot.is_none() && !self.ephemeral
+        cfg!(any(target_os = "linux", target_os = "macos"))
+            && !self.demo
+            && self.screenshot.is_none()
+            && !self.ephemeral
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     /// Whether the portal should be running: some action is global or the media keys are grabbed.
     pub fn portal_wanted(&self) -> crate::global_shortcuts::Wanted {
         if self.portal_active() {

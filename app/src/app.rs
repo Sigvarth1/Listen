@@ -1,7 +1,7 @@
 //! Application state, messages and the update loop.
 
 use crate::images::{self, Images};
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 use crate::mpris::{self, MprisCmd, MprisHandle, MprisMsg, MprisState};
 use crate::playback::{self, PlayerConfig, PlayerMsg};
 use crate::secrets::Secrets;
@@ -437,16 +437,16 @@ pub struct ScrollState {
 #[derive(Debug, Default)]
 struct Published {
     /// (playing, current entry).
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     tray: Option<(bool, Option<u64>)>,
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     mpris: Option<MprisKey>,
     /// The cover file of the entry it was looked up for (MPRIS).
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     art: Option<(u64, Option<String>)>,
 }
 
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct MprisKey {
     uid: Option<u64>,
@@ -662,9 +662,9 @@ pub struct Listen {
     pub voice_detector: analysis::VoiceDetector,
     /// YouTube Music analysis switches on once the folder dialog returns a folder.
     pub pending_ytm_analysis: bool,
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     tray: Option<crate::tray::TrayHandle>,
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     tray_published: (bool, String),
     discord: crate::discord::Discord,
     pub integ: integrations::State,
@@ -672,6 +672,9 @@ pub struct Listen {
     pub lastfm: lastfm::LastFmState,
     /// Hidden to the tray (close-to-tray).
     hidden: bool,
+    /// When the app started (macOS ignores the activation that comes with the launch).
+    #[cfg(target_os = "macos")]
+    started: std::time::Instant,
     /// Geometry of the main window (saved between runs).
     win: window_state::WinTrack,
     /// Keeps the system awake while playing.
@@ -681,7 +684,7 @@ pub struct Listen {
     /// Minimized, as far as the platform tells (asked when focus is lost).
     minimized: bool,
     /// What the desktop integrations were last built from (see `sync_*`).
-    #[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "linux", windows, target_os = "macos")), allow(dead_code))]
     published: Published,
     /// The window has keyboard focus (the visualizer slows down without it).
     focused: bool,
@@ -702,9 +705,9 @@ pub struct Listen {
     /// `--autoplay` with the AI DJ on: start it from the album's first song.
     autoplay_dj: bool,
     start_route: Option<Route>,
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     mpris: Option<MprisHandle>,
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     mpris_published: MprisState,
 }
 
@@ -875,16 +878,19 @@ pub enum Message {
     Setting(Setting),
     Integrations(integrations::IntegrationsMsg),
     LastFm(lastfm::LastFmMsg),
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     Tray(crate::tray::TrayMsg),
     Keyboard(iced::keyboard::Event),
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     GlobalShortcut(crate::global_shortcuts::ShortcutMsg),
     CloseRequested(window::Id),
     WindowClosed(window::Id),
     WindowEvent(window::Id, window::Event),
     DiscordDone(Result<(), String>),
     ToggleFullscreen,
+    /// macOS: Listen became the active app (e.g. its Dock icon was clicked).
+    #[cfg(target_os = "macos")]
+    AppActivated,
     /// Compact layout: open / close the sidebar drawer.
     ToggleDrawer,
     CloseDrawer,
@@ -968,7 +974,7 @@ pub enum Message {
     Overlay(overlay::OverlayMsg),
     /// Settings page shell: tabs, search, reset, relaunch, player-bar/sidebar controls.
     Shell(settings_shell::ShellMsg),
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     Mpris(MprisMsg),
     /// CD ripping.
     Rip(rip::RipMsg),
@@ -1210,13 +1216,15 @@ impl Listen {
             milk: Default::default(),
             global_triggers: Vec::new(),
             global_error: None,
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             tray: None,
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             tray_published: (false, String::new()),
             discord: crate::discord::Discord::default(),
             integ: integrations::State::default(),
             hidden: false,
+            #[cfg(target_os = "macos")]
+            started: std::time::Instant::now(),
             win: window_state::WinTrack::default(),
             inhibitor: if args.demo || args.ephemeral || args.screenshot.is_some() {
                 crate::inhibit::Inhibitor::disabled()
@@ -1232,9 +1240,9 @@ impl Listen {
             autoplay: args.autoplay,
             autoplay_dj: false,
             start_route: args.route.as_deref().and_then(parse_route),
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             mpris: None,
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             mpris_published: MprisState::default(),
         };
         state.voice_refresh();
@@ -2894,7 +2902,7 @@ impl Listen {
         if matches!(message, Message::ImageLoaded(..)) {
             self.integ.cover_dirty();
         }
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         if matches!(message, Message::ImageLoaded(..)) {
             // Maybe the playing song's cover: MPRIS looks for its file again.
             self.published.art.take_if(|(_, art)| art.is_none());
@@ -2921,13 +2929,13 @@ impl Listen {
         } else {
             task
         };
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         let task = Task::batch([task, self.sync_mpris(), self.sync_tray()]);
         self.sync_inhibit();
         Task::batch([task, self.sync_integrations()])
     }
 
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn sync_tray(&mut self) -> Task<Message> {
         let Some(handle) = self.tray.clone() else { return Task::none() };
         let key = (self.playback.playing, self.queue.current().map(|i| i.uid));
@@ -3039,13 +3047,13 @@ impl Listen {
         }
     }
 
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn show_window(&mut self) -> Task<Message> {
         self.reveal_main_window()
     }
 
     /// Publishes player state to the desktop when it changed.
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn sync_mpris(&mut self) -> Task<Message> {
         let Some(handle) = self.mpris.clone() else { return Task::none() };
         let position = self.playback.position.as_secs_f64();
@@ -3083,7 +3091,7 @@ impl Listen {
 
     /// The playing song's cover file as a `file://` URL, looked up once per
     /// song (and again when an image arrives while it has none).
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn mpris_art(&mut self) -> Option<String> {
         let item = self.queue.current()?;
         if let Some((uid, art)) = &self.published.art
@@ -3102,7 +3110,7 @@ impl Listen {
         art
     }
 
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn mpris_state(&self, art_url: Option<String>) -> MprisState {
         use listen_core::queue::Repeat;
         let track = self.queue.current().map(|item| {
@@ -3161,7 +3169,7 @@ impl Listen {
         }
     }
 
-    #[cfg(any(target_os = "linux", windows))]
+    #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
     fn on_mpris(&mut self, msg: MprisMsg) -> Task<Message> {
         use listen_core::queue::Repeat;
         let cmd = match msg {
@@ -4130,20 +4138,20 @@ impl Listen {
             Message::Setting(change) => return self.change_setting(change),
             Message::Integrations(m) => return self.on_integrations(m),
             Message::LastFm(m) => return self.on_lastfm(m),
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             Message::Tray(crate::tray::TrayMsg::Ready(handle)) => {
                 self.tray = Some(handle);
                 self.tray_published = (false, String::from("\u{0}"));
                 self.published.tray = None;
             }
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             Message::Tray(crate::tray::TrayMsg::Unavailable) => {
                 // Started hidden but there is no tray to bring the window back from.
                 if self.main_window.is_none() && self.hidden {
                     return self.reveal_main_window();
                 }
             }
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             Message::Tray(crate::tray::TrayMsg::Command(cmd)) => {
                 use crate::tray::TrayCmd;
                 return match cmd {
@@ -4186,7 +4194,7 @@ impl Listen {
                 };
                 return self.update(Message::Appearance(msg));
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             Message::GlobalShortcut(msg) => {
                 use crate::global_shortcuts::ShortcutMsg;
                 match msg {
@@ -4196,7 +4204,10 @@ impl Listen {
                             None => Task::none(),
                         };
                     }
-                    ShortcutMsg::Bound(triggers) => self.global_triggers = triggers,
+                    ShortcutMsg::Bound(triggers) => {
+                        self.global_triggers = triggers;
+                        self.global_error = None;
+                    }
                     ShortcutMsg::Unavailable(e) => self.global_error = Some(e),
                 }
             }
@@ -4340,8 +4351,18 @@ impl Listen {
             }
             Message::Overlay(m) => return self.on_overlay(m),
             Message::Shell(m) => return self.on_shell(m),
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             Message::Mpris(msg) => return self.on_mpris(msg),
+            // A click on the Dock icon brings back a window hidden to the menu bar.
+            #[cfg(target_os = "macos")]
+            Message::AppActivated => {
+                if self.hidden
+                    && self.main_window.is_none()
+                    && self.started.elapsed() > Duration::from_secs(3)
+                {
+                    return self.reveal_main_window();
+                }
+            }
             Message::Noop | Message::ToggleVideo => {}
         }
         Task::none()
@@ -4412,7 +4433,7 @@ impl Listen {
             if self.video.on {
                 subs.push(iced::time::every(Duration::from_millis(20)).map(|_| Message::VideoTick));
             }
-            #[cfg(any(target_os = "linux", windows))]
+            #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             subs.push(mpris::subscription());
             #[cfg(target_os = "linux")]
             if self.visualizer_running() && self.milkdrop_active() {
@@ -4439,7 +4460,7 @@ impl Listen {
         subs.push(self.discord_subscription());
         subs.push(iced::keyboard::listen().map(Message::Keyboard));
         subs.push(palette::subscription(self));
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let wanted = self.portal_wanted();
             if !wanted.is_empty() {
@@ -4484,10 +4505,12 @@ impl Listen {
         }));
         subs.push(window::close_events().map(Message::WindowClosed));
         subs.push(window::close_requests().map(Message::CloseRequested));
+        #[cfg(target_os = "macos")]
+        subs.push(crate::macos::activations());
         if !self.ephemeral && !self.demo {
             subs.push(crate::single_instance::subscription());
         }
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         if self.config.settings.window.tray && !self.demo {
             subs.push(crate::tray::subscription());
         }

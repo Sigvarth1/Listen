@@ -136,8 +136,8 @@ pub(super) fn appearance(state: &Listen) -> Element<'_, Message> {
         (_, false) => "Use the KDE colour scheme / theme switcher colours and follow changes live.".into(),
     };
     let mut appearance = vec![];
-    // KDE colour schemes / theme switchers: nothing to follow on Windows.
-    if !cfg!(windows) {
+    // KDE colour schemes / theme switchers: nothing to follow on Windows or macOS.
+    if !cfg!(any(windows, target_os = "macos")) {
         appearance.push(line(
             state,
             "Follow desktop theme",

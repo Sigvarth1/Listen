@@ -14,6 +14,10 @@ pub mod dialog;
 pub mod discord;
 #[cfg(target_os = "linux")]
 pub mod global_shortcuts;
+/// System-wide shortcuts (Carbon hot keys), under the name the app code uses.
+#[cfg(target_os = "macos")]
+#[path = "global_shortcuts_mac.rs"]
+pub mod global_shortcuts;
 pub mod heart_rate;
 pub mod hotkeys;
 pub mod i18n;
@@ -21,6 +25,8 @@ pub mod icons;
 pub mod images;
 pub mod inhibit;
 pub mod logging;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod mcp;
 pub mod media_types;
 pub mod milkdrop;
@@ -29,6 +35,10 @@ pub mod mpris;
 /// The System Media Transport Controls, under the name the app code uses.
 #[cfg(windows)]
 #[path = "smtc.rs"]
+pub mod mpris;
+/// Now Playing and the media keys, under the name the app code uses.
+#[cfg(target_os = "macos")]
+#[path = "now_playing.rs"]
 pub mod mpris;
 pub mod notify;
 pub mod playback;
@@ -40,6 +50,9 @@ pub mod style;
 pub mod tray;
 #[cfg(windows)]
 #[path = "tray_win.rs"]
+pub mod tray;
+#[cfg(target_os = "macos")]
+#[path = "tray_mac.rs"]
 pub mod tray;
 pub mod ui;
 pub mod visualizer;

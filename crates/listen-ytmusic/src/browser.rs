@@ -87,7 +87,7 @@ impl Profile {
 }
 
 /// (browser, Chromium config dir relative to $HOME, keyring application names)
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 const CHROMIUM_DIRS: &[(&str, &str, &[&str])] = &[
     ("Ecosia", ".var/app/org.ecosia.Browser/config/EcosiaBrowser", &["ecosia", "chromium", "chrome"]),
     ("Ecosia", ".config/EcosiaBrowser", &["ecosia", "chromium", "chrome"]),
@@ -101,8 +101,28 @@ const CHROMIUM_DIRS: &[(&str, &str, &[&str])] = &[
     ("Vivaldi", ".config/vivaldi", &["chrome", "chromium"]),
 ];
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 const FIREFOX_DIRS: &[&str] = &[".mozilla/firefox", ".var/app/org.mozilla.firefox/.mozilla/firefox"];
+
+/// macOS: (browser, "User Data" folder relative to $HOME, [Keychain service, Keychain account] of the
+/// password its cookies are encrypted with).
+#[cfg(target_os = "macos")]
+const CHROMIUM_DIRS: &[(&str, &str, &[&str])] = &[
+    ("Chrome", "Library/Application Support/Google/Chrome", &["Chrome Safe Storage", "Chrome"]),
+    ("Chromium", "Library/Application Support/Chromium", &["Chromium Safe Storage", "Chromium"]),
+    ("Brave", "Library/Application Support/BraveSoftware/Brave-Browser", &["Brave Safe Storage", "Brave"]),
+    (
+        "Edge",
+        "Library/Application Support/Microsoft Edge",
+        &["Microsoft Edge Safe Storage", "Microsoft Edge"],
+    ),
+    ("Vivaldi", "Library/Application Support/Vivaldi", &["Vivaldi Safe Storage", "Vivaldi"]),
+    ("Arc", "Library/Application Support/Arc/User Data", &["Arc Safe Storage", "Arc"]),
+    ("Ecosia", "Library/Application Support/EcosiaBrowser", &["Ecosia Safe Storage", "Ecosia"]),
+];
+
+#[cfg(target_os = "macos")]
+const FIREFOX_DIRS: &[&str] = &["Library/Application Support/Firefox/Profiles"];
 
 /// All browser profiles with a cookie database, most recently used first.
 pub fn profiles() -> Vec<Profile> {
@@ -265,6 +285,10 @@ pub fn all() -> Result<Vec<Found>, String> {
         return Err(if cfg!(windows) {
             "no supported browser found (Chrome, Edge, Brave, Vivaldi, Chromium, Ecosia, Firefox); \
              sign in with Firefox, or use a cookies file"
+                .into()
+        } else if cfg!(target_os = "macos") {
+            "no supported browser found (Chrome, Brave, Edge, Arc, Vivaldi, Chromium, Firefox; not Safari); \
+             use a cookies file instead"
                 .into()
         } else {
             "no supported browser found (Chrome, Chromium, Ecosia, Brave, Edge, Vivaldi, Firefox)".into()
@@ -431,7 +455,13 @@ fn read_chromium(db: &Path, keyring_apps: &[String]) -> Result<Vec<Cookie>, Stri
                 }
             }
         } else if let Some(data) = encrypted.strip_prefix(b"v10") {
-            decrypt(&v10, data, &host, version)
+            // macOS encrypts `v10` with the browser's Keychain password, Linux with a built-in one.
+            let key = if cfg!(target_os = "macos") {
+                *v11.get_or_insert_with(|| keyring_key(keyring_apps))
+            } else {
+                Some(v10)
+            };
+            key.and_then(|k| decrypt(&k, data, &host, version))
         } else if let Some(data) = encrypted.strip_prefix(b"v11") {
             let key = *v11.get_or_insert_with(|| keyring_key(keyring_apps));
             key.and_then(|k| decrypt(&k, data, &host, version))
@@ -572,13 +602,52 @@ fn chromium_key(password: &[u8]) -> [u8; 16] {
     key
 }
 
+/// PBKDF2-HMAC-SHA1(password, "saltysalt", `iterations`, 16 bytes) (one block suffices).
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn chromium_key_iter(password: &[u8], iterations: u32) -> [u8; 16] {
+    use hmac::{Hmac, Mac};
+    let mac = <Hmac<sha1::Sha1> as Mac>::new_from_slice(password).expect("any key length");
+    let mut u = {
+        let mut m = mac.clone();
+        m.update(b"saltysalt\x00\x00\x00\x01");
+        m.finalize().into_bytes()
+    };
+    let mut t = u;
+    for _ in 1..iterations {
+        let mut m = mac.clone();
+        m.update(&u);
+        u = m.finalize().into_bytes();
+        t.iter_mut().zip(u.iter()).for_each(|(a, b)| *a ^= b);
+    }
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&t[..16]);
+    key
+}
+
 /// The `v11` key: the browser's password in the Secret Service.
 #[cfg(not(unix))]
 fn keyring_key(_apps: &[String]) -> Option<[u8; 16]> {
     None
 }
 
-#[cfg(unix)]
+/// macOS: the `v10` key from the browser's "… Safe Storage" password in the login Keychain
+/// (`apps` = [service, account]). macOS asks the user once whether Listen may read it.
+#[cfg(target_os = "macos")]
+fn keyring_key(apps: &[String]) -> Option<[u8; 16]> {
+    let [service, account] = apps else { return None };
+    let out = std::process::Command::new("/usr/bin/security")
+        .args(["find-generic-password", "-w", "-s", service, "-a", account])
+        .output()
+        .ok()?;
+    let password = String::from_utf8_lossy(&out.stdout).trim_end_matches('\n').to_string();
+    if !out.status.success() || password.is_empty() {
+        tracing::info!("no Keychain password for {service}: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return None;
+    }
+    Some(chromium_key_iter(password.as_bytes(), 1003))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn keyring_key(apps: &[String]) -> Option<[u8; 16]> {
     for app in apps {
         for schema in ["chrome_libsecret_os_crypt_password_v2", "chrome_libsecret_os_crypt_password_v1"] {
@@ -611,7 +680,7 @@ fn decrypt(key: &[u8; 16], data: &[u8], host: &str, db_version: i64) -> Option<S
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn encrypt(key: &[u8; 16], plain: &[u8]) -> Vec<u8> {
         use aes::cipher::{BlockEncryptMut, KeyIvInit, block_padding::Pkcs7};
         let iv = [b' '; 16];
@@ -676,7 +745,7 @@ mod tests {
     }
 
     /// A Chromium profile like Ecosia's Flatpak one: v10 values, meta version 24.
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn fake_chromium_profile(home: &Path, signed_in: bool) -> PathBuf {
         let dir = home.join(".var/app/org.ecosia.Browser/config/EcosiaBrowser/Default");
         std::fs::create_dir_all(&dir).unwrap();
@@ -742,7 +811,7 @@ mod tests {
         home
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     #[test]
     fn reads_ecosia_flatpak_profile() {
         let home = temp_home("ok");
@@ -759,13 +828,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     #[test]
     fn explains_signed_out_browser() {
         let home = temp_home("out");
         fake_chromium_profile(&home, false);
         let err = profiles_in(&home)[0].youtube_header().unwrap_err();
         assert!(err.contains("isn't signed in"), "{err}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// macOS derives the key with 1003 PBKDF2 rounds (checked against Python's `hashlib`).
+    #[test]
+    fn macos_key_derivation() {
+        let hex = |k: [u8; 16]| k.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        assert_eq!(hex(chromium_key_iter(b"peanuts", 1003)), "d9a09d499b4e1b7461f28e67972c6dbd");
+        assert_eq!(chromium_key_iter(b"peanuts", 1), chromium_key(b"peanuts"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finds_macos_browser_profiles() {
+        let home = temp_home("mac");
+        let chrome = home.join("Library/Application Support/Google/Chrome/Profile 1/Network");
+        std::fs::create_dir_all(&chrome).unwrap();
+        std::fs::write(chrome.join("Cookies"), b"x").unwrap();
+        let ff = home.join("Library/Application Support/Firefox/Profiles/abc.default-release");
+        std::fs::create_dir_all(&ff).unwrap();
+        std::fs::write(ff.join("cookies.sqlite"), b"x").unwrap();
+        let found = profiles_in(&home);
+        let mut names: Vec<(&str, &str)> =
+            found.iter().map(|p| (p.browser.as_str(), p.profile.as_str())).collect();
+        names.sort();
+        assert_eq!(names, [("Chrome", "Profile 1"), ("Firefox", "abc.default-release")]);
+        let chrome = found.iter().find(|p| p.browser == "Chrome").unwrap();
+        assert_eq!(chrome.keyring_apps, ["Chrome Safe Storage", "Chrome"]);
         let _ = std::fs::remove_dir_all(&home);
     }
 

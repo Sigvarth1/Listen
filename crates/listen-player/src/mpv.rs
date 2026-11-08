@@ -128,9 +128,9 @@ impl Mpv {
             format!("--input-ipc-server={}", socket.display()),
         ];
         args.push(if opts.video { "--vid=auto" } else { "--no-video" }.into());
-        // Windows mpv registers its own media session (SMTC) with the stream's file
-        // name; Discord and the volume flyout then show "mpv" instead of Listen's.
-        if cfg!(windows) {
+        // Windows and macOS mpv register their own media session (SMTC / Now Playing) with the
+        // stream's file name; the system controls then show "mpv" and steal the media keys.
+        if cfg!(any(windows, target_os = "macos")) {
             args.push("--media-controls=no".into());
         }
         if opts.null_audio {
@@ -158,6 +158,7 @@ impl Mpv {
             .kill_on_drop(true)
             .spawn()
             .map_err(MpvError::Spawn)?;
+        listen_core::platform::track_child(child.id());
 
         let (reader, writer) = connect(&socket).await?;
         let pending: Pending = Arc::default();
@@ -259,6 +260,8 @@ impl Mpv {
 
 impl Drop for Mpv {
     fn drop(&mut self) {
+        // `kill_on_drop` ends the process right after this.
+        listen_core::platform::untrack_child(self.child.as_ref().and_then(Child::id));
         // mpv is killed with the handle and does not get to remove its socket.
         if let Some(socket) = &self.socket {
             let _ = std::fs::remove_file(socket);

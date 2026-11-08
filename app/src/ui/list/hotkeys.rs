@@ -53,12 +53,12 @@ mod tests {
         let left = Key::Named(Named::ArrowLeft);
         assert_eq!(key_action(&left, none, false), None);
         assert_eq!(key_action(&left, none, true), Some(KeyAction::Move(Move::Left)));
-        // mod+a (Ctrl on Linux).
+        // mod+a (Ctrl on Linux and Windows, Cmd on macOS).
         let a = Key::Character("a".into());
-        assert_eq!(key_action(&a, Modifiers::CTRL, false), Some(KeyAction::SelectAll));
+        assert_eq!(key_action(&a, Modifiers::COMMAND, false), Some(KeyAction::SelectAll));
         assert_eq!(key_action(&a, none, false), None);
         // Chords with Ctrl / Alt are other hotkeys' business.
-        assert_eq!(key_action(&down, Modifiers::CTRL, false), None);
+        assert_eq!(key_action(&down, Modifiers::COMMAND, false), None);
         assert_eq!(key_action(&down, Modifiers::ALT, false), None);
     }
 }

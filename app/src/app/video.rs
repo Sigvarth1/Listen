@@ -143,6 +143,7 @@ impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        listen_core::platform::untrack_child(Some(self.child.id()));
         let _ = std::fs::remove_file(&self.socket);
     }
 }
@@ -303,7 +304,7 @@ fn spawn(url: &str, start: f64, song_id: &str) -> Result<Session, String> {
         "--ofopts=flush_packets=1",
     ])
     .arg(format!("--input-ipc-server={}", socket.display()))
-    .args(cfg!(windows).then_some("--media-controls=no")) // only Listen's own media session
+    .args(cfg!(any(windows, target_os = "macos")).then_some("--media-controls=no")) // only Listen's own media session
     .arg(filters)
     .arg("--hr-seek=yes")
     .arg(format!("--start={start:.2}"));
@@ -318,6 +319,7 @@ fn spawn(url: &str, start: f64, song_id: &str) -> Result<Session, String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("could not start mpv ({e}); is the `mpv` package installed?"))?;
+    listen_core::platform::track_child(Some(child.id()));
     let mut out = child.stdout.take().ok_or("mpv gave no output")?;
     let (tx, frames) = sync_channel(QUEUE);
     std::thread::spawn(move || {

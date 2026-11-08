@@ -5,7 +5,18 @@
 use iced::keyboard::{Key, Modifiers, key::Named, key::Physical};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// A parsed binding. `ctrl` is Feishin's `mod`; `meta` is the logo key.
+/// Whether Feishin's `mod` is held: Cmd on macOS (Electron's `CmdOrCtrl`), Ctrl elsewhere.
+pub fn mod_held(mods: Modifiers) -> bool {
+    if cfg!(target_os = "macos") { mods.logo() } else { mods.control() }
+}
+
+/// Whether the binding's `meta` is held: the logo key, or on macOS (where Cmd is `mod`) Control.
+pub fn meta_held(mods: Modifiers) -> bool {
+    if cfg!(target_os = "macos") { mods.control() } else { mods.logo() }
+}
+
+/// A parsed binding. `ctrl` is Feishin's `mod` (Cmd on macOS); `meta` is the logo key
+/// (Control on macOS).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Binding {
     pub key: String,
@@ -182,10 +193,10 @@ pub fn record(name: Option<&str>, mods: Modifiers) -> Option<String> {
     let key = name?;
     let b = Binding {
         key: key.to_string(),
-        ctrl: mods.control(),
+        ctrl: mod_held(mods),
         shift: mods.shift(),
         alt: mods.alt(),
-        meta: mods.logo(),
+        meta: meta_held(mods),
     };
     Some(b.serialize())
 }
@@ -252,10 +263,10 @@ pub fn actions_for<'a>(
         .filter_map(|(action, hotkey)| {
             let b = parse(hotkey)?;
             (b.key == name
-                && b.ctrl == mods.control()
+                && b.ctrl == mod_held(mods)
                 && b.shift == mods.shift()
                 && b.alt == mods.alt()
-                && b.meta == mods.logo())
+                && b.meta == meta_held(mods))
             .then_some(action.as_str())
         })
         .collect()
@@ -264,6 +275,10 @@ pub fn actions_for<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The keys `mod` and `meta` are on this platform.
+    const MOD: Modifiers = if cfg!(target_os = "macos") { Modifiers::LOGO } else { Modifiers::CTRL };
+    const META: Modifiers = if cfg!(target_os = "macos") { Modifiers::CTRL } else { Modifiers::LOGO };
 
     fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs.iter().map(|(a, k)| (a.to_string(), k.to_string())).collect()
@@ -280,9 +295,9 @@ mod tests {
         let bindings = map(&[("playPause", "space"), ("globalSearch", "mod+k")]);
         let none = BTreeSet::new();
         assert_eq!(actions_for(&bindings, &none, "space", Modifiers::empty()), ["playPause"]);
-        assert_eq!(actions_for(&bindings, &none, "k", Modifiers::CTRL), ["globalSearch"]);
+        assert_eq!(actions_for(&bindings, &none, "k", MOD), ["globalSearch"]);
         assert!(actions_for(&bindings, &none, "k", Modifiers::empty()).is_empty());
-        assert!(actions_for(&bindings, &none, "k", Modifiers::CTRL | Modifiers::SHIFT).is_empty());
+        assert!(actions_for(&bindings, &none, "k", MOD | Modifiers::SHIFT).is_empty());
     }
 
     #[test]
@@ -298,15 +313,15 @@ mod tests {
 
     #[test]
     fn recording_produces_the_binding() {
-        assert_eq!(record(Some("k"), Modifiers::CTRL).as_deref(), Some("mod+k"));
+        assert_eq!(record(Some("k"), MOD).as_deref(), Some("mod+k"));
         assert_eq!(
-            record(Some("arrowright"), Modifiers::CTRL | Modifiers::ALT | Modifiers::SHIFT).as_deref(),
+            record(Some("arrowright"), MOD | Modifiers::ALT | Modifiers::SHIFT).as_deref(),
             Some("mod+alt+shift+arrowright")
         );
         assert_eq!(record(Some("space"), Modifiers::empty()).as_deref(), Some("space"));
-        assert_eq!(record(Some("x"), Modifiers::LOGO).as_deref(), Some("meta+x"));
+        assert_eq!(record(Some("x"), META).as_deref(), Some("meta+x"));
         // A lone modifier keeps waiting for the key.
-        assert_eq!(record(None, Modifiers::CTRL), None);
+        assert_eq!(record(None, MOD), None);
         assert_eq!(
             press_name(
                 &Key::Character("A".into()),

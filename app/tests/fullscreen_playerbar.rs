@@ -21,6 +21,8 @@ fn gpu() -> std::sync::MutexGuard<'static, ()> {
 
 fn state() -> Listen {
     let (mut s, _) = Listen::boot(&Args { demo: true, theme: Some("tokyoNight".into()), ..Args::default() });
+    // The click positions below include the 30 px custom window bar (off by default on macOS).
+    s.config.settings.window.custom_title_bar = true;
     s.queue.set(demo::album_songs(0), 0);
     let _ = s.update(Message::WindowResized(iced::Size::new(1600.0, 900.0)));
     s

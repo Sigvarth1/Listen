@@ -18,7 +18,7 @@ impl Step {
     /// The steps on this platform, in order.
     pub fn all() -> Vec<Step> {
         let mut v = vec![Self::Welcome, Self::Features, Self::Analysis, Self::AiDj];
-        if cfg!(windows) {
+        if super::helpers::SUPPORTED {
             v.push(Self::Helpers);
         }
         v
@@ -97,6 +97,9 @@ mod tests {
     fn steps_start_with_welcome_and_end_with_the_ai_dj_or_helpers() {
         let steps = Step::all();
         assert_eq!(steps[0], Step::Welcome);
-        assert_eq!(*steps.last().unwrap(), if cfg!(windows) { Step::Helpers } else { Step::AiDj });
+        assert_eq!(
+            *steps.last().unwrap(),
+            if super::super::helpers::SUPPORTED { Step::Helpers } else { Step::AiDj }
+        );
     }
 }

@@ -2491,14 +2491,13 @@ fn milkdrop_fixtures() -> PathBuf {
 
 /// A real frame from libprojectM when it and an OpenGL display exist, else a gradient.
 fn milkdrop_frame() -> Vec<u8> {
-    use listen::milkdrop::{api, ffi::ProjectM, gl::Headless};
     let (w, h) = (960usize, 540usize);
     // EGL and a live Vulkan instance must not set up at the same time.
     let _gpu = gpu();
     #[cfg(target_os = "linux")]
-    if let Ok(api) = api()
-        && let Ok(gl) = Headless::new(w as i32, h as i32)
-        && let Some(mut pm) = ProjectM::new(api, w, h, 30)
+    if let Ok(api) = listen::milkdrop::api()
+        && let Ok(gl) = listen::milkdrop::gl::Headless::new(w as i32, h as i32)
+        && let Some(mut pm) = listen::milkdrop::ffi::ProjectM::new(api, w, h, 30)
         && pm.load_preset(&milkdrop_fixtures().join("a-red.milk"), false).is_ok()
     {
         for i in 0..40 {

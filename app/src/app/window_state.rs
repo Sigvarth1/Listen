@@ -198,9 +198,9 @@ impl Listen {
     /// Wayland can't hide or un-minimize a window, so this closes it and
     /// [`Listen::reveal_main_window`] opens a new one.
     pub(super) fn hide_to_tray(&mut self) -> Option<Task<Message>> {
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         self.tray.as_ref()?;
-        #[cfg(not(any(target_os = "linux", windows)))]
+        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
         if true {
             return None;
         }

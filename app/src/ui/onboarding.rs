@@ -14,6 +14,30 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Length, Padding};
 
+/// The helper texts for this platform's package manager (winget on Windows, Homebrew on macOS).
+const MAC: bool = cfg!(target_os = "macos");
+const INSTALL_BUTTON: &str = if MAC { "Install with Homebrew" } else { "Install with winget" };
+const HELPERS_INTRO: &str = if MAC {
+    "Listen plays through mpv, and YouTube Music needs yt-dlp and Deno. They are separate open-source \
+     programs; Listen installs them with Homebrew (the Mac's package manager) in a Terminal window."
+} else {
+    "Listen plays through mpv, and YouTube Music needs yt-dlp and Deno. They are separate open-source \
+     programs; Listen installs the official packages with winget (Windows' package manager) in a window \
+     of its own. mpv asks for administrator rights once."
+};
+const HELPERS_DONE: &str = if MAC {
+    "When Homebrew is done, press “Check again”. Listen uses the programs after a restart."
+} else {
+    "When winget is done, press “Check again”. Listen uses the programs after a restart."
+};
+const HELPERS_MODAL: &str = if MAC {
+    "Listen needs these programs to play music. It can install them with Homebrew (the Mac's package \
+     manager) in a Terminal window; if Homebrew is missing, it shows where to get it."
+} else {
+    "Listen needs these programs to play music. It can install the official packages with winget \
+     (Windows' package manager) in a window of its own; mpv asks for administrator rights once."
+};
+
 fn para<'a>(state: &'a Listen, s: &'static str) -> Element<'a, Message> {
     crate::ui::t_text(s)
         .font(crate::appearance::current_font())
@@ -275,25 +299,17 @@ fn helpers(state: &Listen) -> Column<'_, Message> {
     let missing = !state.helpers.missing.is_empty();
     let mut c = column![
         label_w("Helper programs", 24.0, t.foreground, Weight::Bold),
-        para(
-            state,
-            "Listen plays through mpv, and YouTube Music needs yt-dlp and Deno. They are separate open-source \
-             programs; Listen installs the official packages with winget (Windows' package manager) in a window \
-             of its own. mpv asks for administrator rights once."
-        ),
+        para(state, HELPERS_INTRO),
         helper_rows(state),
         row![
-            btn(state, "Install with winget", true, missing.then_some(Message::Helpers(HelpersMsg::Install))),
+            btn(state, INSTALL_BUTTON, true, missing.then_some(Message::Helpers(HelpersMsg::Install))),
             btn(state, "Check again", false, Some(Message::Helpers(HelpersMsg::Check))),
         ]
         .spacing(metrics::space_sm()),
     ]
     .spacing(metrics::space_md());
     if state.helpers.started {
-        c = c.push(para(
-            state,
-            "When winget is done, press “Check again”. Listen uses the programs after a restart.",
-        ));
+        c = c.push(para(state, HELPERS_DONE));
     }
     c
 }
@@ -363,23 +379,15 @@ pub fn view(state: &Listen) -> Element<'_, Message> {
     container(card).center(Length::Fill).padding(24).into()
 }
 
-/// The helper-programs dialog (Windows; opens at start when something is missing).
+/// The helper-programs dialog (Windows, macOS; opens at start when something is missing).
 pub fn helpers_modal(state: &Listen) -> Option<ModalParts<'_>> {
-    let body = column![
-        para(
-            state,
-            "Listen needs these programs to play music. It can install the official packages with winget \
-             (Windows' package manager) in a window of its own; mpv asks for administrator rights once."
-        ),
-        helper_rows(state),
-    ]
-    .spacing(metrics::space_md());
+    let body = column![para(state, HELPERS_MODAL), helper_rows(state),].spacing(metrics::space_md());
     let actions = vec![
         btn(state, "Later", false, Some(Message::Helpers(HelpersMsg::Close))),
         btn(state, "Check again", false, Some(Message::Helpers(HelpersMsg::Check))),
         btn(
             state,
-            "Install with winget",
+            INSTALL_BUTTON,
             true,
             (!state.helpers.missing.is_empty()).then_some(Message::Helpers(HelpersMsg::Install)),
         ),

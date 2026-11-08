@@ -12,7 +12,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(windows)]
 const KEYRING_NAME: &str = "Windows Credential Manager";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const KEYRING_NAME: &str = "macOS Keychain";
+#[cfg(not(any(windows, target_os = "macos")))]
 const KEYRING_NAME: &str = "Secret Service";
 /// What the settings row says about the fallback file's protection.
 #[cfg(unix)]

@@ -117,7 +117,7 @@ fn ctrl_a(s: &mut Listen) {
         modified_key: Key::Character("a".into()),
         physical_key: Physical::Code(Code::KeyA),
         location: Location::Standard,
-        modifiers: Modifiers::CTRL,
+        modifiers: Modifiers::COMMAND, // mod+a: Ctrl, or Cmd on macOS
         text: None,
         repeat: false,
     }));
