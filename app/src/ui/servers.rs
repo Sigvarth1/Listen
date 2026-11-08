@@ -298,6 +298,12 @@ pub fn edit_modal(state: &Listen) -> Option<ModalParts<'_>> {
         SourceKind::Local => {
             body = body.push(captioned(t, "Music folder", field(t, "~/Music", &form.url, S::EditUrl, false)));
         }
+        SourceKind::Spotify => {
+            body = body.push(small_text(
+                "Signed in to Spotify. To use another account, remove this one and sign in again.",
+                t.muted,
+            ));
+        }
         kind => {
             body = body
                 .push(captioned(

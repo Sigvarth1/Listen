@@ -46,7 +46,7 @@ The full user and developer guide is at **[leks2205.github.io/Listen](https://le
 ## About
 
 Listen plays music from **Navidrome / OpenSubsonic** and **Jellyfin** servers, from **YouTube Music** with your own
-account, from **local folders** and from **internet radio**, all in one queue. Its interface follows
+account, from your **Spotify** library (played via YouTube Music), from **local folders** and from **internet radio**, all in one queue. Its interface follows
 [Feishin](https://github.com/jeffvli/feishin) closely, so Feishin users feel at home right away (you can even import
 your Feishin settings), but it is a separate program written from scratch in Rust with [iced](https://iced.rs) and
 [mpv](https://mpv.io).
@@ -58,8 +58,8 @@ songs, automatic **CD ripping**, and **DLNA casting**.
 ## Features
 
 **Sources**
-- Navidrome and other OpenSubsonic servers, Jellyfin (with Quick Connect and LAN discovery), YouTube Music, local
-  folders and internet radio. Several servers side by side; one queue can mix them.
+- Navidrome and other OpenSubsonic servers, Jellyfin (with Quick Connect and LAN discovery), YouTube Music, Spotify,
+  local folders and internet radio. Several servers side by side; one queue can mix them.
 - YouTube Music with your own account (unofficial, see [Legal notes](#legal-notes)): library, liked songs,
   playlists (create, edit, reorder), albums, artists, radio, history, music videos, lyrics. Sign-in reads your
   browser's existing YouTube session; no password is typed into Listen.
@@ -165,6 +165,7 @@ Open **Add server** in the sidebar (or **Settings → General → Servers**).
 | Navidrome / OpenSubsonic | Server address, user name and password |
 | Jellyfin | Server address and login, or Quick Connect; servers on your network are found automatically |
 | YouTube Music | Pick a browser you're signed in to YouTube with (see below) |
+| Spotify | The client ID of your own Spotify developer app, then sign in in the browser (see below) |
 | Local folders | One or more folders with music files |
 
 ### YouTube Music
@@ -185,6 +186,24 @@ choose **Other ways to connect → cookies file**.
 Listen only stores *which* browser profile and channel to use. The cookies are read again at each start, stay on
 your computer and are only ever sent to YouTube. Without signing in, Listen works as a guest: search, albums, artists,
 radio and playback, but no library.
+
+### Spotify
+
+Listen shows your Spotify library through the official Spotify Web API: Liked Songs, saved albums, followed artists,
+your playlists (create, rename, add, remove and reorder songs), search and a home page with your recently played and
+top songs. Spotify only lets its own apps play its audio, so **each song plays from its YouTube Music copy** (found by
+title, artist and length, and played through yt-dlp like YouTube Music songs). Install yt-dlp and Deno as for YouTube
+Music.
+
+Spotify requires every app to have its own client ID:
+
+1. Open the [Spotify developer dashboard](https://developer.spotify.com/dashboard), sign in and choose **Create app**.
+   Tick **Web API**, and add `http://127.0.0.1:8898/callback` as the **Redirect URI**.
+2. In Listen choose **Add server → Spotify**, paste the app's **Client ID** and click **Sign in with Spotify**.
+   Your browser opens Spotify's consent page; after you agree, Listen finishes signing in by itself.
+
+Apps in Spotify's development mode only work for the developer's account and the accounts added under **User
+Management** in the dashboard. Listen keeps only the client ID and Spotify's refresh token, in the system keyring.
 
 ## AI DJ: bring your own Gemini key
 
@@ -335,12 +354,16 @@ Poppins (SIL Open Font License). Icons: [Lucide](https://lucide.dev), [Remix Ico
 ## Legal notes
 
 - **Unofficial.** Listen is an independent project. It is not affiliated with, endorsed or sponsored by Google
-  LLC, YouTube, Navidrome, Jellyfin or Feishin. YouTube and YouTube Music are trademarks of Google LLC.
+  LLC, YouTube, Spotify AB, Navidrome, Jellyfin or Feishin. YouTube and YouTube Music are trademarks of Google LLC;
+  Spotify is a trademark of Spotify AB.
 - **YouTube Music support is unofficial.** It uses YouTube Music's web interface and the separately installed
   [yt-dlp](https://github.com/yt-dlp/yt-dlp), may stop working whenever YouTube changes something, and may not be
   allowed by [YouTube's Terms of Service](https://www.youtube.com/t/terms). You use it with your own account and at
   your own risk; YouTube may restrict accounts it considers to be accessed by unofficial clients. A YouTube Music
   Premium subscription is recommended. Listen does not download YouTube Music songs for offline use.
+- **Spotify support** reads your library through the Spotify Web API under your own developer app and
+  [Spotify's Developer Terms](https://developer.spotify.com/terms). Listen does not play or download Spotify's audio;
+  songs play from YouTube Music, as described above.
 - **No content is provided by Listen.** It plays what your own servers, files and accounts give you access to.
 - **AI DJ.** Requests go from your computer to Google under your own key and Google's
   [Gemini API terms](https://ai.google.dev/gemini-api/terms) (which require you to be 18 or older). Outside the EU,

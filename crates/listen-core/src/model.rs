@@ -14,6 +14,8 @@ pub enum SourceKind {
     YouTubeMusic,
     /// A music folder on this computer.
     Local,
+    /// The Spotify library (Web API); songs play from their YouTube Music copy.
+    Spotify,
 }
 
 impl SourceKind {
@@ -23,6 +25,7 @@ impl SourceKind {
             SourceKind::Jellyfin => "Jellyfin",
             SourceKind::YouTubeMusic => "YouTube Music",
             SourceKind::Local => "Local folder",
+            SourceKind::Spotify => "Spotify",
         }
     }
 }

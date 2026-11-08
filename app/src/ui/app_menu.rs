@@ -87,6 +87,7 @@ fn app_menu_entries<'a>(state: &Listen) -> Vec<(Element<'a, Message>, f32)> {
             let glyph = match server.kind {
                 listen_core::model::SourceKind::YouTubeMusic => Icon::LuMusic,
                 listen_core::model::SourceKind::Local => Icon::RiFolder3Line,
+                listen_core::model::SourceKind::Spotify => Icon::SiSpotify,
                 _ => Icon::LuServer,
             };
             add(

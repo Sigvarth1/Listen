@@ -546,6 +546,7 @@ fn expanded(state: &Listen, width: f32, drawer: bool) -> Element<'_, Message> {
             let glyph = match server.kind {
                 listen_core::model::SourceKind::YouTubeMusic => Icon::LuMusic,
                 listen_core::model::SourceKind::Local => Icon::RiFolder3Line,
+                listen_core::model::SourceKind::Spotify => Icon::SiSpotify,
                 _ => Icon::LuServer,
             };
             let connected = state.sources.contains_key(&server.id);

@@ -85,11 +85,12 @@ fn own_sources(sources: &Sources) -> Vec<(ServerId, Arc<dyn MusicSource>)> {
         SourceKind::Subsonic => 0,
         SourceKind::Jellyfin => 1,
         SourceKind::Local => 2,
-        SourceKind::YouTubeMusic => 3,
+        SourceKind::YouTubeMusic | SourceKind::Spotify => 3,
     };
+    // Spotify songs play from YouTube Music too, so they are no own copy.
     let mut own: Vec<_> = sources
         .iter()
-        .filter(|(_, s)| s.kind() != SourceKind::YouTubeMusic)
+        .filter(|(_, s)| !matches!(s.kind(), SourceKind::YouTubeMusic | SourceKind::Spotify))
         .map(|(id, s)| (id.clone(), s.clone()))
         .collect();
     own.sort_by(|a, b| (rank(a.1.kind()), &a.0.0).cmp(&(rank(b.1.kind()), &b.0.0)));

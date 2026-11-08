@@ -22,6 +22,9 @@ pub(super) fn servers(state: &Listen) -> Option<Element<'_, Message>> {
         let active = state.config.active_server.as_ref() == Some(&server.id);
         let detail = match server.kind {
             listen_core::model::SourceKind::YouTubeMusic => server.kind.label().to_string(),
+            listen_core::model::SourceKind::Spotify => {
+                format!("{} — {}", server.kind.label(), server.username)
+            }
             listen_core::model::SourceKind::Local => format!("{} — {}", server.kind.label(), server.url),
             _ => format!("{} — {} as {}", server.kind.label(), server.url, server.username),
         };

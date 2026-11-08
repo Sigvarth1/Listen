@@ -320,6 +320,27 @@ impl YouTubeMusic {
         self.guest
     }
 
+    /// Songs matching `text` (the Songs filter of a search only): one request, for sources that
+    /// look up the YouTube copy of a song they cannot play themselves (Spotify).
+    pub async fn search_songs(&self, text: &str) -> Result<Vec<Song>> {
+        let found = yt_retry!(self, yt => yt.search_songs(text).await)?;
+        Ok(found
+            .iter()
+            .map(|s| {
+                self.song(
+                    &s.video_id,
+                    &s.title,
+                    name_ref(&s.artist),
+                    s.album.as_ref(),
+                    &s.duration,
+                    &s.thumbnails,
+                    None,
+                    &s.explicit,
+                )
+            })
+            .collect())
+    }
+
     pub async fn check_ytdlp(&self) -> std::result::Result<String, String> {
         self.ytdlp.check().await
     }

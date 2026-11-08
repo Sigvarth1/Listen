@@ -4069,6 +4069,7 @@ dependencies = [
  "listen-player",
  "listen-rip",
  "listen-source",
+ "listen-spotify",
  "listen-subsonic",
  "listen-visualizer",
  "listen-ytmusic",
@@ -4288,6 +4289,26 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "listen-spotify"
+version = "0.41.4"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "listen-core",
+ "listen-source",
+ "listen-ytmusic",
+ "rand 0.9.5",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

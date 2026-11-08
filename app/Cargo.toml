@@ -20,6 +20,7 @@ listen-player = { path = "../crates/listen-player" }
 listen-subsonic = { path = "../crates/listen-subsonic" }
 listen-ytmusic = { path = "../crates/listen-ytmusic" }
 listen-jellyfin = { path = "../crates/listen-jellyfin" }
+listen-spotify = { path = "../crates/listen-spotify" }
 listen-local = { path = "../crates/listen-local" }
 listen-visualizer = { path = "../crates/listen-visualizer" }
 listen-lyrics = { path = "../crates/listen-lyrics", default-features = false }

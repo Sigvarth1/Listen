@@ -550,7 +550,7 @@ impl Listen {
             ..old.clone()
         };
         match form.kind {
-            SourceKind::YouTubeMusic => {}
+            SourceKind::YouTubeMusic | SourceKind::Spotify => {}
             SourceKind::Local => server.url = form.url.trim().to_string(),
             _ => {
                 server.url = normalize_url(&form.url);

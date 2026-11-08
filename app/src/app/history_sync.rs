@@ -88,7 +88,8 @@ fn host(url: &str) -> String {
 
 pub(super) fn key_of(server: &ServerConfig) -> String {
     match server.kind {
-        SourceKind::YouTubeMusic => source_name(server.kind),
+        // Catalogue ids are the same for every account and device.
+        SourceKind::YouTubeMusic | SourceKind::Spotify => source_name(server.kind),
         SourceKind::Local => format!("{}:{}", source_name(server.kind), server.id.0),
         kind => format!("{}:{}", source_name(kind), host(&server.url)),
     }
@@ -98,7 +99,9 @@ pub(super) fn key_of(server: &ServerConfig) -> String {
 fn server_key(entry: &Entry, servers: &[ServerConfig]) -> String {
     match servers.iter().find(|s| s.id == entry.server_id) {
         Some(s) if s.kind == entry.source => key_of(s),
-        _ if entry.source == SourceKind::YouTubeMusic => source_name(entry.source),
+        _ if matches!(entry.source, SourceKind::YouTubeMusic | SourceKind::Spotify) => {
+            source_name(entry.source)
+        }
         _ => format!("{}:{}", source_name(entry.source), entry.server_id.0),
     }
 }

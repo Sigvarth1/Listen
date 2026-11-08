@@ -251,3 +251,30 @@ fn a_working_connection_clears_the_page() {
     assert!(s.action_required().is_none());
     assert!(!s.needs_login());
 }
+
+#[test]
+fn spotify_sign_in_asks_for_the_client_id() {
+    let mut s = state();
+    let messages = click_text(&mut s, "Spotify");
+    assert!(messages.iter().any(|m| matches!(m, Message::Login(LoginMsg::Kind(SourceKind::Spotify)))));
+    assert_eq!(s.login.kind, SourceKind::Spotify);
+    assert!(has_text(&s, "Connect Spotify"));
+    assert!(has_text(&s, listen_spotify::auth::REDIRECT_URI));
+    assert!(!has_text(&s, "Legacy authentication"));
+
+    // Without a client id nothing is opened.
+    click_text(&mut s, "Sign in with Spotify");
+    assert!(!s.login.busy);
+    assert_eq!(s.login.error.as_deref(), Some("Paste the client ID of your Spotify app."));
+
+    // For a visual check: target/snapshots/login-spotify-*.png.
+    let _gpu = gpu();
+    let mut ui = Simulator::with_size(settings(), s.window_size, s.view());
+    let snapshot = ui.snapshot(&iced::Theme::Dark).expect("snapshot renders");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/snapshots");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("login-spotify");
+    let _ = std::fs::remove_file(dir.join("login-spotify-wgpu.png"));
+    let _ = std::fs::remove_file(dir.join("login-spotify-tiny-skia.png"));
+    assert!(snapshot.matches_image(&path).expect("png written"));
+}

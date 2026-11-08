@@ -741,6 +741,8 @@ pub enum LoginMsg {
     /// Use this channel's library.
     PickChannel(usize),
     ToggleCookies,
+    /// Open the Spotify developer dashboard (to create the app that gives a client id).
+    SpotifyDashboard,
 }
 
 /// What an Auto-DJ fetch brought: the songs, the ids of those from the similar list and the title of the
@@ -1245,6 +1247,13 @@ impl Listen {
             #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
             mpris_published: MprisState::default(),
         };
+        // Spotify can replace the refresh token while Listen runs; the new one must be stored.
+        if let Some(dir) = state.paths.as_ref().map(|p| p.config_dir.clone()).filter(|_| !state.ephemeral) {
+            let store = state.config.secret_store;
+            listen_spotify::set_secret_saver(move |id, secret| {
+                Secrets::with_store(&dir, store).set(id, secret)
+            });
+        }
         state.voice_refresh();
         if let Some(id) = &args.theme {
             state.config.settings.appearance.follow_desktop_theme = false;
@@ -1633,6 +1642,9 @@ impl Listen {
                 };
                 Arc::new(folder.map_err(err)?)
             }
+            SourceKind::Spotify => {
+                Arc::new(listen_spotify::Spotify::connect(server.id.clone(), &secret).await.map_err(err)?)
+            }
             SourceKind::Jellyfin => Arc::new(
                 listen_jellyfin::Jellyfin::connect_with(
                     server.id.clone(),
@@ -1810,9 +1822,56 @@ impl Listen {
         }
     }
 
+    /// Signs in to Spotify in the browser, then connects (the account's name becomes the server's).
+    fn sign_in_spotify(&mut self) -> Task<Message> {
+        let client_id = self.login.username.trim().to_string();
+        if client_id.is_empty() {
+            self.login.error = Some("Paste the client ID of your Spotify app.".into());
+            return Task::none();
+        }
+        self.login.busy = true;
+        self.login.error = None;
+        let id = ServerId(format!("sp-{:x}", unix_millis()));
+        Task::perform(
+            async move {
+                let secret = listen_spotify::auth::sign_in(&client_id, album_page::open_url).await?;
+                let spotify =
+                    listen_spotify::Spotify::connect(id.clone(), &secret.to_json()).await.map_err(err)?;
+                tokio::time::timeout(PING_TIMEOUT, spotify.ping())
+                    .await
+                    .map_err(|_| "Spotify did not answer.".to_string())?
+                    .map_err(err)?;
+                let me = spotify.me();
+                let server = ServerConfig {
+                    id,
+                    name: format!("Spotify ({})", me.display_name),
+                    kind: SourceKind::Spotify,
+                    url: String::new(),
+                    username: me.id,
+                };
+                // Spotify may have replaced the refresh token while connecting.
+                let secret = spotify.secret().await;
+                Ok((server, secret, SourceHandle(Arc::new(spotify))))
+            },
+            Message::LoggedIn,
+        )
+    }
+
+    /// The client id of a Spotify account that is already set up, to sign in with again.
+    fn known_spotify_client_id(&self) -> Option<String> {
+        self.config
+            .servers
+            .iter()
+            .filter(|s| s.kind == SourceKind::Spotify)
+            .find_map(|s| self.secret_of(s))
+            .and_then(|s| listen_spotify::auth::Secret::from_json(&s))
+            .map(|s| s.client_id)
+    }
+
     fn submit_login(&mut self) -> Task<Message> {
         let now = unix_millis();
         let (server, secret) = match self.login.kind {
+            SourceKind::Spotify => return self.sign_in_spotify(),
             SourceKind::Local => {
                 let path = shellexpand_home(self.login.url.trim());
                 if self.login.url.trim().is_empty() || !path.is_dir() {
@@ -3518,7 +3577,11 @@ impl Listen {
                     if kind == SourceKind::YouTubeMusic {
                         return self.find_browser();
                     }
+                    if kind == SourceKind::Spotify && self.login.username.trim().is_empty() {
+                        self.login.username = self.known_spotify_client_id().unwrap_or_default();
+                    }
                 }
+                LoginMsg::SpotifyDashboard => album_page::open_url(listen_spotify::auth::DASHBOARD_URL),
                 LoginMsg::Submit if !self.login.busy => return self.submit_login(),
                 LoginMsg::Submit => {}
                 LoginMsg::Browse => {

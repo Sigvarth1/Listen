@@ -171,7 +171,11 @@ pub fn candidate<'a>(listing: &'a Listing, now_ms: u64, me: &str, trigger: Trigg
 pub fn wire_song(song: &Song, servers: &[ServerConfig]) -> Value {
     let key = match servers.iter().find(|s| s.id == song.server_id) {
         Some(s) if s.kind == song.source => history_sync::key_of(s),
-        _ if song.source == listen_core::model::SourceKind::YouTubeMusic => {
+        _ if matches!(
+            song.source,
+            listen_core::model::SourceKind::YouTubeMusic | listen_core::model::SourceKind::Spotify
+        ) =>
+        {
             history_sync::source_name(song.source)
         }
         _ => format!("{}:{}", history_sync::source_name(song.source), song.server_id.0),

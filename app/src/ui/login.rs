@@ -1,4 +1,4 @@
-//! Sign-in page: Navidrome (OpenSubsonic), Jellyfin, YouTube Music or a local folder.
+//! Sign-in page: Navidrome (OpenSubsonic), Jellyfin, YouTube Music, Spotify or a local folder.
 
 use super::{icon, label, label_w};
 use crate::app::{Listen, LoginMsg, Message};
@@ -73,7 +73,8 @@ pub fn view(state: &Listen) -> Element<'_, Message> {
     let tabs = row![
         tab(SourceKind::Subsonic, "Navidrome"),
         tab(SourceKind::Jellyfin, "Jellyfin"),
-        tab(SourceKind::YouTubeMusic, "YouTube Music"),
+        tab(SourceKind::YouTubeMusic, "YouTube"),
+        tab(SourceKind::Spotify, "Spotify"),
         tab(SourceKind::Local, "Local")
     ]
     .spacing(metrics::space_sm());
@@ -235,6 +236,32 @@ pub fn view(state: &Listen) -> Element<'_, Message> {
                  It can break when YouTube changes things.",
             ))
         }
+        SourceKind::Spotify => column![
+            row![icon(Icon::SiSpotify, 22.0, t.primary), label_w("Connect Spotify", 22.0, t.foreground, Weight::Bold)]
+                .spacing(metrics::space_md())
+                .align_y(Alignment::Center),
+            para(
+                "Your Spotify library, playlists, albums and artists, with search. Spotify lets only its own \
+                 apps play its audio, so Listen plays each song from YouTube Music (via yt-dlp)."
+            ),
+            para(
+                "Spotify needs an app of your own: create one in the Spotify developer dashboard (choose Web \
+                 API), add the redirect URI below, and paste the app's Client ID here. Listen then opens \
+                 Spotify in your browser to sign in."
+            ),
+            column![
+                caption("Redirect URI"),
+                text_input("", listen_spotify::auth::REDIRECT_URI)
+                    .font(crate::appearance::current_font())
+                    .size(metrics::font_md())
+                    .padding(Padding::from([9.0, 12.0]))
+                    .style(style::input(t)),
+            ]
+            .spacing(metrics::space_xs()),
+            wide("Open the Spotify developer dashboard", false, Some(Message::Login(LoginMsg::SpotifyDashboard))),
+            column![caption("Client ID"), field("32-character client ID", &f.username, LoginMsg::Username, false)]
+                .spacing(metrics::space_xs()),
+        ],
         SourceKind::Local => column![
             row![
                 icon(Icon::RiFolder3Line, 22.0, t.primary),
@@ -300,9 +327,12 @@ pub fn view(state: &Listen) -> Element<'_, Message> {
     }
     let ytm = f.kind == SourceKind::YouTubeMusic;
     if !ytm || f.show_cookies {
+        let spotify = f.kind == SourceKind::Spotify;
         let submit_label = match (f.busy, ytm) {
+            (true, _) if spotify => "Waiting for Spotify in your browser…",
             (true, _) => "Connecting…",
             (false, true) => "Connect with cookies / as guest",
+            (false, false) if spotify => "Sign in with Spotify",
             (false, false) => "Connect",
         };
         form = form.push(wide(submit_label, !ytm, (!f.busy).then_some(Message::Login(LoginMsg::Submit))));
